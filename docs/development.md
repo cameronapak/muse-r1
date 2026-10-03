@@ -29,7 +29,7 @@ Run Android lint separately:
 ```
 
 Lint has known failures in earlier reports. Report failures rather than treating an APK build as a clean lint result.
-The [Checks workflow](../.github/workflows/checks.yml) defines build and JVM-test checks for pull requests and pushes to `main`, plus tests for the checked fixture runner. Its separate lint job fails when lint fails and uploads the report even on failure. The existing lint errors are not suppressed. Check [GitHub Actions](https://github.com/cameronapak/muse-r1/actions/workflows/checks.yml) for remote results; local workflow validation is not a GitHub execution.
+Run builds, tests, and lint locally. The owner requested local checks to avoid GitHub runner costs. The Checks workflow is disabled and removed; do not add or enable GitHub Actions checks without explicit approval.
 
 ## Checked emulator runner
 
@@ -239,6 +239,8 @@ The checked emulator runner, fast volume fixture, and CI definition were verifie
 - The updated runner passed fast and full volume, global side-button recording, visual, display-history, and force-stop restoration checks on the disposable, unpaired, audio-disabled Android 14 emulator. Fast volume took about 8 seconds; full volume took about 50 seconds.
 - `actionlint` validated the workflow. At the local verification checkpoint, it had not been pushed or executed on GitHub.
 - Android lint still failed with 15 existing errors and 20 warnings. The CI lint job does not suppress them.
+
+The workflow subsequently ran on GitHub: the corrected setup passed app and test APK builds, JVM tests, and all 25 runner tests; lint reported the same 15 errors and 20 warnings. The owner then requested local-only checks to avoid runner costs. The workflow was disabled and removed, without suppressing the local lint failures.
 
 Only the emulator test APK was updated for these checks. No physical-device operation or live Muse turn was used for this tooling change.
 

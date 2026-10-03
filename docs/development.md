@@ -217,7 +217,12 @@ The larger volume overlay and first-wheel focus fix were verified locally on Oct
 - Low, medium, maximum, and muted volume screenshots were inspected at 480×640 without clipping or focus outlines.
 - Android lint still failed with 15 errors in unchanged recording, pairing, and vendored Noise code.
 
-This refinement is local only, not installed on the physical r1 or published as a release. No physical-device operations or live Muse tests were used for it.
+With the owner's authorization on October 3, 2026, the verified refinement APK was installed on the physical r1 using `adb install -r`.
+The signing key matched the previous installation, and the installed APK hash matched the verified local build. Encrypted credentials, display history, identity preferences, and the original first-install time were unchanged.
+Accessibility enablement was unchanged, and Android reported **Side button controls** bound with key-filtering capability, no window-content capability, and no crashed services. The app launch request succeeded while PIN lock remained active; the installation did not bypass unlock.
+This installation did not open the microphone, inject button or wheel events, run instrumentation or a live Muse test, clear app data, reboot, or change keylayouts.
+
+This refinement is installed but not published as a release. Hands-on appearance and timing, audible speaker output, and long-term reliability remain unverified.
 
 The original side-button and wheel volume shortcut was verified locally on October 3, 2026:
 

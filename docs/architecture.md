@@ -48,7 +48,7 @@ The overlay waits 1.5 seconds after the last adjustment, then fades out over 180
 `SpeechOutput.hasPlayback` includes both queued and active speech. A side-button hold beginning during playback preserves it and cannot record later on that press, even if playback ends. A tap still locks; a character hold still interrupts playback to record.
 Playback starting after button-down does not change an ordinary press into a playback-preserving press.
 The original volume shortcut is installed on one physical r1 with pairing preserved, and the owner confirmed that it works. Its wheel keylayout maps scan codes 103/108 to `DPAD_UP`/`DPAD_DOWN`.
-The larger overlay and earlier key filtering pass local and emulator checks but are not installed on the physical r1. Their physical timing and appearance, audible speaker output, and long-term reliability remain unverified. See [verification status](development.md#verification-status).
+The larger overlay and earlier key filtering pass local and emulator checks and are installed on the physical r1 with pairing preserved. Hands-on confirmation of this refinement, physical timing and appearance, audible speaker output, and long-term reliability remain unverified. See [verification status](development.md#verification-status).
 
 ## Pairing and credentials
 

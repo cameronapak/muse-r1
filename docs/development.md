@@ -29,7 +29,20 @@ Run Android lint separately:
 ```
 
 Lint has known failures in earlier reports. Report failures rather than treating an APK build as a clean lint result.
-No CI configuration or active Git hook currently runs these checks automatically.
+The [Checks workflow](../.github/workflows/checks.yml) defines build and JVM-test checks for pull requests and pushes to `main`, plus tests for the checked fixture runner. Its separate lint job fails when lint fails and uploads the report even on failure. The existing lint errors are not suppressed. The workflow has not been run on GitHub during this change.
+
+## Checked emulator runner
+
+Install [Bun](https://bun.sh) 1.4.2 or later, then test the runner:
+
+```sh
+bun test scripts/check-device.test.ts
+```
+
+Use `bun scripts/check-device.ts YOUR_EMULATOR_SERIAL FIXTURE` for emulator fixtures below. The runner selects that device explicitly, checks emulator hardware, and refuses an emulator containing encrypted credentials, their interrupted-write files, or a pending SDK token. Install both debug APKs on a disposable, unprovisioned emulator first.
+Fixtures are `visual`, `history`, `restore`, `button`, `button-recording`, `volume-fast`, and `volume`. Physical-device and live Muse modes are deliberately excluded. The runner does not install APKs, configure keylayouts, clear data, or remove PINs.
+It requests raw instrumentation output and requires both the fixture's `PASS` result and Android's `RESULT_OK` completion code (`INSTRUMENTATION_CODE: -1`). It returns a nonzero exit code for failed `adb` commands, fixture failures, missing or conflicting completion results, or an old test APK that does not recognize fast mode. Ordinary `adb shell am instrument` can exit zero even when instrumentation prints `FAIL`; use the runner rather than relying on that exit code.
+If `adb` is not on your path, set `ADB` to its absolute path. The runner cannot verify that an emulator was started with `-no-audio`; use that option for recording fixtures as described below.
 
 ## Emulator UI checks
 
@@ -43,8 +56,7 @@ adb shell wm size 480x640
 adb shell wm density 190
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-adb shell am instrument -w -e visual true \
-  dev.cameronpak.muser1.test/dev.cameronpak.muser1.DeviceChecks
+bun scripts/check-device.ts "$ANDROID_SERIAL" visual
 ```
 
 Check the instrumentation output for success. The visual mode renders actual native views without recording audio or submitting a Muse turn.
@@ -69,11 +81,9 @@ For an appearance change, inspect affected states, not just the default screen. 
 On the same disposable, unpaired emulator, run the history fixtures, force-stop the app, then check restoration in a new process:
 
 ```sh
-adb -s YOUR_EMULATOR_SERIAL shell am instrument -w -e history true \
-  dev.cameronpak.muser1.test/dev.cameronpak.muser1.DeviceChecks
-adb -s YOUR_EMULATOR_SERIAL shell am force-stop dev.cameronpak.muser1
-adb -s YOUR_EMULATOR_SERIAL shell am instrument -w -e history true -e restore true \
-  dev.cameronpak.muser1.test/dev.cameronpak.muser1.DeviceChecks
+bun scripts/check-device.ts YOUR_EMULATOR_SERIAL history &&
+adb -s YOUR_EMULATOR_SERIAL shell am force-stop dev.cameronpak.muser1 &&
+bun scripts/check-device.ts YOUR_EMULATOR_SERIAL restore
 ```
 
 Both runs must report success. They check retention, disk restoration, reading position during streaming and late transcripts, jump-to-latest, canceled recording, clear guards and confirmations, stale events after clearing, and idle preservation.
@@ -118,17 +128,15 @@ Set the display to 480×640 at density 190, then install both APKs as described 
 Run the global routing checks without opening the microphone:
 
 ```sh
-adb -s YOUR_EMULATOR_SERIAL shell am instrument -w -e button true \
-  dev.cameronpak.muser1.test/dev.cameronpak.muser1.DeviceChecks
+bun scripts/check-device.ts YOUR_EMULATOR_SERIAL button
 ```
 
 Check for `PASS`, not just a successful `adb` exit code. The test covers the disabled-service notice and settings link, no window-content capability, returning Home from a settings hold, a failed hold staying awake, secure taps in Muse and settings, wake to PIN, the unlock-press boundary, service disable/re-enable, and unrelated-key pass-through.
 
-For the recording lifecycle, use an audio-disabled emulator and add `buttonRecording=true`:
+For the recording lifecycle, use an audio-disabled emulator and select `button-recording`:
 
 ```sh
-adb -s YOUR_EMULATOR_SERIAL shell am instrument -w -e button true -e buttonRecording true \
-  dev.cameronpak.muser1.test/dev.cameronpak.muser1.DeviceChecks
+bun scripts/check-device.ts YOUR_EMULATOR_SERIAL button-recording
 ```
 
 This grants emulator microphone permission, exercises local `AudioRecord`, and checks cancellation on canceled release, foreground loss, and service unbind without adding a voice turn.
@@ -143,9 +151,17 @@ Physical button timing, LineageOS service recovery after reboot, speaker behavio
 
 Use the disposable, unpaired, rooted Android 14 Google APIs emulator configured for [global side-button checks](#global-side-button-checks), with `-no-audio`, a 480×640 screen, and density 190. The fixture requires `/system/bin/uinput` and the `gpio-keys` Linux 116 to `PAIRING` mapping. Install both APKs first. No physical device or paired emulator is allowed for this fixture.
 
+During rendering and input-routing work, run the fast mode:
+
 ```sh
-adb -s YOUR_EMULATOR_SERIAL shell am instrument -w -e volume true \
-  dev.cameronpak.muser1.test/dev.cameronpak.muser1.DeviceChecks
+bun scripts/check-device.ts YOUR_EMULATOR_SERIAL volume-fast
+```
+
+It checks the overlay, input routing, playback, and brief recording cancellation, but skips the two 20-second recording-cap checks. It still uses the emulator microphone, so keep audio disabled. The success result starts with `PASS: volume-fast:` and explicitly says that cap checks were skipped.
+Before completing a volume or recording change, run the full fixture:
+
+```sh
+bun scripts/check-device.ts YOUR_EMULATOR_SERIAL volume
 ```
 
 Require `PASS` in the output. Most cases dispatch side-button and wheel `DPAD_UP`/`DPAD_DOWN` events directly to the real service, forwarding unconsumed wheel events to the Activity.
@@ -164,6 +180,14 @@ done
 ```
 
 Check that the large centered overlay is readable, dims the character and conversation, has no numeric percentage, and shows the correct filled squares and speaker waves. Maximum volume has three waves; muted volume has an X, no waves, and no filled squares. Playback can remain active while muted; an audio-disabled emulator cannot verify audible speaker output.
+
+### Input-fixture pitfalls
+
+- On Android 14, `uinput` accepts numeric configuration and event constants, with a `usb` or `bluetooth` bus. Symbolic constants and a `virtual` bus from newer Android examples fail. Use the fixture's version-matched format and wait for device registration before sending input.
+- `UiAutomation.executeShellCommand` starts a process through `Runtime.exec`; it does not interpret shell quoting or semicolons. Send each `sendevent` command separately, as the existing button fixture does. This differs from `adb shell`, which does interpret a shell command.
+- Accessibility routing requires kernel input. Activity dispatch and ordinary injected key events cannot prove that Android's earlier focus handling was bypassed. Keep the unheld-wheel navigation case as a positive control.
+- To check an overlay's touch behavior, dispatch through `MuseScreen`, not directly to the avatar. Test the normal control while the overlay is visible; direct child dispatch bypasses parent interception and can hide a regression.
+- If the test PIN or lock screen blocks a button fixture, stop dependent UI checks. Recover only the disposable emulator, verify Home focus, then rerun the failed checks. Do not infer physical-device unlock behavior from that recovery.
 
 ## Physical-device checks
 
@@ -208,6 +232,16 @@ Remove the fixture after testing with `adb -s YOUR_R1_SERIAL shell run-as dev.ca
 
 ## Verification status
 
+The checked emulator runner, fast volume fixture, and CI definition were verified locally on October 3, 2026:
+
+- All 25 Bun runner tests passed, including false-success rejection and refusal of credential, backup, temporary, and pending-token files.
+- App and test APK builds and all 37 JVM tests passed. The production app code did not change.
+- The updated runner passed fast and full volume, global side-button recording, visual, display-history, and force-stop restoration checks on the disposable, unpaired, audio-disabled Android 14 emulator. Fast volume took about 8 seconds; full volume took about 50 seconds.
+- `actionlint` validated the workflow. GitHub has not executed it during this change, and it has not been pushed.
+- Android lint still failed with 15 existing errors and 20 warnings. The CI lint job does not suppress them.
+
+Only the emulator test APK was updated for these checks. No physical-device operation or live Muse turn was used for this tooling change.
+
 The larger volume overlay and first-wheel focus fix were verified locally on October 3, 2026:
 
 - App and test APK builds and all 37 JVM tests passed.
@@ -222,7 +256,7 @@ The signing key matched the previous installation, and the installed APK hash ma
 Accessibility enablement was unchanged, and Android reported **Side button controls** bound with key-filtering capability, no window-content capability, and no crashed services. The app launch request succeeded while PIN lock remained active; the installation did not bypass unlock.
 This installation did not open the microphone, inject button or wheel events, run instrumentation or a live Muse test, clear app data, reboot, or change keylayouts.
 
-This refinement is installed but not published as a release. Hands-on appearance and timing, audible speaker output, and long-term reliability remain unverified.
+The owner subsequently confirmed the installed HUD's appearance: "Looks impeccable. Perfect". This confirms its appearance, not physical first-wheel focus behavior, measured timing, audible speaker output, or long-term reliability. The refinement is installed but not published as a release.
 
 The original side-button and wheel volume shortcut was verified locally on October 3, 2026:
 
@@ -239,7 +273,7 @@ Accessibility enablement was unchanged, and Android reported **Side button contr
 The existing side-button override remained loaded. The wheel input device used `/system/usr/keylayout/Generic.kl`, whose scan codes 103/108 were confirmed to map to `DPAD_UP`/`DPAD_DOWN`.
 This installation did not open the microphone, inject button or wheel events, run instrumentation or a live Muse test, clear app data, reboot, or change keylayouts.
 
-The owner subsequently confirmed the installed original shortcut works: "It works!" Its small percentage indicator and background-focus behavior prompted the refinement above. That confirmation does not verify the new overlay or input routing; measured physical timing, audible speaker output, and long-term reliability remain unverified here. Neither volume build is published as a release. Earlier installation evidence below describes the previous global-button build.
+The owner subsequently confirmed the installed original shortcut works: "It works!" Its small percentage indicator and background-focus behavior prompted the refinement above. That earlier confirmation covered the original shortcut, not the later overlay or input routing; measured physical timing, audible speaker output, and long-term reliability remain unverified here. Neither volume build is published as a release. Earlier installation evidence below describes the previous global-button build.
 
 The global side-button change was verified locally on October 3, 2026:
 

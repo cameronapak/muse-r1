@@ -31,7 +31,6 @@ The service invokes recording only through an in-process activity reference; the
 A failed hold never becomes a lock tap. With the service disabled, the foreground app shows setup guidance and still supports character holds.
 Native power-menu behavior remains replaced, and tap-to-lock depends on the service being enabled and running.
 
-These controls have local and emulator evidence and are installed with the service bound on one physical r1. Hands-on button confirmation remains pending. See [Development](development.md#verification-status).
 [RabbitMuseOS](rabbit-muse-os.md) records the firmware destination and this service's role as a stepping stone.
 
 ### Side-button and wheel volume
@@ -47,8 +46,6 @@ The overlay waits 1.5 seconds after the last adjustment, then fades out over 180
 
 `SpeechOutput.hasPlayback` includes both queued and active speech. A side-button hold beginning during playback preserves it and cannot record later on that press, even if playback ends. A tap still locks; a character hold still interrupts playback to record.
 Playback starting after button-down does not change an ordinary press into a playback-preserving press.
-The original volume shortcut is installed on one physical r1 with pairing preserved, and the owner confirmed that it works. Its wheel keylayout maps scan codes 103/108 to `DPAD_UP`/`DPAD_DOWN`.
-The larger overlay and earlier key filtering pass local and emulator checks and are installed on the physical r1 with pairing preserved. Hands-on confirmation of this refinement, physical timing and appearance, audible speaker output, and long-term reliability remain unverified. See [verification status](development.md#verification-status).
 
 ## Pairing and credentials
 
@@ -80,7 +77,6 @@ Missing transcription does not block a reply or playback.
 
 The screen shows a pulsing waveform while recording and a loading icon after release until transcription arrives.
 If no transcript arrives within 30 seconds after the send completes, it shows **Transcript unavailable**. A late transcript replaces that fallback.
-These indicators passed emulator checks, were installed on the r1, and received the owner's hands-on confirmation, as reported by the publishing thread on October 3, 2026.
 
 ## Display history
 
@@ -90,10 +86,6 @@ Display history is local to the r1. Clearing it does not delete Meta Muse histor
 The screen follows new replies unless you scroll to earlier turns. A circular jump-to-latest button returns to the newest turn and resumes following.
 The top-right clear icon and a shake gesture open the same confirmation. Clearing is disabled while recording or awaiting a reply.
 Canceling keeps history; confirming clears the local display and saved text. Returning to idle hides history without clearing it.
-
-As of October 3, 2026, the implementation thread reports passing local builds, JVM tests, emulator history and process-restoration checks, and screenshot inspection.
-The verified build is installed on the physical r1 with pairing preserved. The history thread reports the owner's hands-on confirmation that the installed display-history flow works.
-Shake sensitivity and long-term reliability remain unverified.
 
 ## Upstream code
 

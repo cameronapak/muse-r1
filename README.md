@@ -19,14 +19,13 @@ The button mapping replaces native power behavior. The enabled global service su
 ## What to expect
 
 - Voice notes, not streaming dictation. Recordings last between 0.3 and 20 seconds.
-- Tap to lock Android; press to wake to PIN. Recording starts after a 300 ms side-button hold. These global controls pass emulator checks and are installed with the service enabled on one physical r1; hands-on confirmation remains pending.
-- Hold the side button and turn the wheel to adjust media volume while Muse r1 is open and unlocked. Playback continues; release neither sends a voice note nor locks. A hold beginning during playback does not record; hold the character to interrupt and talk. The original shortcut has the owner's hands-on confirmation. The larger square-step overlay, changing speaker waves, muted icon, and first-wheel focus fix pass local checks and are installed on the r1; hands-on confirmation of this refinement remains pending.
+- Tap to lock Android; press to wake to PIN. Recording starts after a 300 ms side-button hold.
+- Hold the side button and turn the wheel to adjust media volume while Muse r1 is open and unlocked. Playback continues; release neither sends a voice note nor locks. A hold beginning during playback does not record; hold the character to interrupt and talk. A centered overlay shows square volume steps, changing speaker waves, and a muted icon at zero.
 - A full-screen character and reply text. Hold the character to talk, or tap it to open device controls.
 - Android text-to-speech, not Muse's native voice. Missing transcripts do not block replies or playback.
 - Pairing preserved by same-signed app updates. Uninstalling or clearing app data requires pairing again.
 
-This project currently uses source-built debug APKs. Persistent display history passes local tests, is installed on the r1, and has the owner's hands-on confirmation that the installed flow works.
-Shake sensitivity and long-term reliability remain unverified.
+This project currently uses source-built debug APKs.
 See [verification status and limitations](docs/development.md#verification-status) before relying on a feature or firmware configuration.
 
 ## For contributors

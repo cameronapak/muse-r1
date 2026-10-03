@@ -93,7 +93,7 @@ If Android blocks enabling a sideloaded service with a restricted-settings warni
 The exact Android labels can vary by build.
 
 Tap-to-lock depends on the service staying enabled and running. If it is disabled, Muse r1 shows setup guidance when it receives the button release; character holds still work.
-The global button behavior passed emulator checks. The verified APK is installed with the service bound on one physical r1; hands-on confirmation remains pending. See [verification status](development.md#verification-status).
+See [verification status](development.md#verification-status) for installation evidence and hands-on limitations.
 
 ## 6. Use Muse r1 as your home screen
 
@@ -112,7 +112,7 @@ The current source build dims the background and shows a large centered speaker 
 Once the wheel moves, that press controls volume through release. Any side-button recording already started is discarded; release neither sends nor locks. Without the side button, the wheel still navigates normally.
 A side-button hold beginning during playback keeps the reply playing and does not record, even if playback ends before release. Hold the character to interrupt playback and talk instead.
 At the 20-second limit, the microphone stops and Muse r1 asks you to release to send. Turning the wheel can still discard that capped side-button recording. Character recording keeps its automatic submission at the limit.
-The original shortcut is installed on one physical r1 with pairing preserved, and the owner confirmed that it works. The larger overlay and first-wheel focus fix pass local checks and are installed there with pairing preserved; hands-on confirmation of this refinement remains pending. They require a same-signed app update, not a new keylayout or reboot. See [verification status](development.md#verification-status).
+The volume shortcut requires a same-signed app update, not a new keylayout or reboot. See [verification status](development.md#verification-status) for the installed build and confirmed behavior.
 
 Tap the side button to lock Android, including from Android settings or while Muse is replying or speaking. Locking stops playback and disconnects the foreground session; an unfinished reply might not appear after unlock.
 If the screen is locked, press the side button to wake it, release, unlock with your PIN, then hold again to speak. That wake or locked press cannot become a recording gesture.

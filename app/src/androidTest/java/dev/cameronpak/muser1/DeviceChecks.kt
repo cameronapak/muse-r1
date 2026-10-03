@@ -41,6 +41,7 @@ class DeviceChecks : Instrumentation() {
     private var buttonCheck = false
     private var buttonRecording = false
     private var volumeCheck = false
+    private var volumeFast = false
     private var historyCheck = false
     private var restoreHistory = false
     private var expectedReply = "Muse on Rabbit is working"
@@ -52,7 +53,8 @@ class DeviceChecks : Instrumentation() {
         visual = arguments?.getString("visual") == "true"
         buttonCheck = arguments?.getString("button") == "true"
         buttonRecording = arguments?.getString("buttonRecording") == "true"
-        volumeCheck = arguments?.getString("volume") == "true"
+        volumeFast = arguments?.getString("volumeFast") == "true"
+        volumeCheck = arguments?.getString("volume") == "true" || volumeFast
         historyCheck = arguments?.getString("history") == "true"
         restoreHistory = arguments?.getString("restore") == "true"
         expectedReply = arguments?.getString("expected") ?: expectedReply
@@ -414,7 +416,7 @@ class DeviceChecks : Instrumentation() {
             }
             // Even at the audio cap, release owns submission and the wheel can still discard.
             val recorderField = MainActivity::class.java.getDeclaredField("recorder").apply { isAccessible = true }
-            for (discard in listOf(true, false)) {
+            if (!volumeFast) for (discard in listOf(true, false)) {
                 val saved = runBlocking { app.displayHistory.load() }
                 onMain { press = SystemClock.uptimeMillis(); sideButtonKey(KeyEvent.ACTION_DOWN, press) }
                 var capped = false
@@ -539,7 +541,8 @@ class DeviceChecks : Instrumentation() {
                 } // EOF removes the temporary input device.
             } finally { pipes[0].close() }
             check(audio.getStreamVolume(AudioManager.STREAM_ALARM) == alarmVolume)
-            result.putString("stream", "PASS: DPAD wheel media volume and limits; rendered square, wave and mute boundaries; timed overlay; preserved TTS and playback-ending press; later playback does not change an ordinary hold; late wheel discards recording without a turn or lock, including at the cap; capped audio sends only on release; character interrupts and records; real kernel wheel preserves touch mode and focus during a side-button press, unheld wheel navigates. Audio-disabled emulator only, no Muse turn used.")
+            val capCoverage = if (volumeFast) "cap checks skipped" else "late wheel discards capped audio; capped audio sends only on release"
+            result.putString("stream", "PASS: ${if (volumeFast) "volume-fast" else "volume"}: DPAD wheel media volume and limits; rendered square, wave and mute boundaries; timed overlay; preserved TTS and playback-ending press; later playback does not change an ordinary hold; late wheel discards recording without a turn or lock; $capCoverage; character interrupts and records; real kernel wheel preserves touch mode and focus during a side-button press, unheld wheel navigates. Audio-disabled emulator only, no Muse turn used.")
         } finally {
             audio.setStreamVolume(AudioManager.STREAM_MUSIC, originalVolume, 0)
             for ((key, value) in listOf("enabled_accessibility_services" to originalServices, "accessibility_enabled" to originalEnabled))

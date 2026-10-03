@@ -19,7 +19,7 @@ Open a terminal in the downloaded or cloned repository root and run:
 
 Expect `BUILD SUCCESSFUL`. The app APK is `app/build/outputs/apk/debug/app-debug.apk`.
 The test APK is `app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk`.
-The JVM tests cover WAV encoding, pairing cryptography, Bluetooth framing, wire envelopes, Noise sessions, and reply tracking.
+The JVM tests cover WAV encoding, pairing cryptography, Bluetooth framing, wire envelopes, Noise sessions, reply tracking, and side-button gestures.
 Follow [Set up Muse r1](setup.md) to install on a physical r1.
 
 Run Android lint separately:
@@ -90,9 +90,59 @@ adb -s YOUR_EMULATOR_SERIAL exec-out run-as dev.cameronpak.muser1 \
 
 Inspect both captures for readable turns and unobstructed controls. Physical shake sensitivity and hands-on scrolling require separate device confirmation.
 
+### Global side-button checks
+
+Use a fresh, unpaired, rooted Android 14 **Google APIs** emulator, not a Play Store image.
+Start it with `-no-audio` for the optional recording-lifecycle checks. Do not use a physical device or an emulator containing SDK tokens, pairing credentials, or an existing PIN.
+The fixture sets and removes its own test PIN, restores accessibility enablement settings, and uses no live Muse transport.
+
+Ordinary `adb shell input` and `UiAutomation` key injection bypass Android's accessibility input filter.
+These checks send Linux key events through the emulator's `gpio-keys` device and InputReader instead.
+Verify that `gpio-keys` uses `/dev/input/event0` with Linux power key `116` before configuring it.
+
+On that disposable emulator only, map the kernel button using the same keylayout as the r1:
+
+```sh
+adb -s YOUR_EMULATOR_SERIAL root
+adb -s YOUR_EMULATOR_SERIAL wait-for-device
+adb -s YOUR_EMULATOR_SERIAL shell getevent -pl /dev/input/event0
+adb -s YOUR_EMULATOR_SERIAL shell 'mkdir -p /data/system/devices/keylayout; chown system:system /data/system/devices /data/system/devices/keylayout; chmod 755 /data/system/devices /data/system/devices/keylayout'
+adb -s YOUR_EMULATOR_SERIAL push hardware/mtk-kpd.kl /data/system/devices/keylayout/gpio-keys.kl
+adb -s YOUR_EMULATOR_SERIAL shell 'chown system:system /data/system/devices/keylayout/gpio-keys.kl; chmod 644 /data/system/devices/keylayout/gpio-keys.kl; restorecon -RF /data/system/devices'
+adb -s YOUR_EMULATOR_SERIAL reboot
+adb -s YOUR_EMULATOR_SERIAL wait-for-device
+```
+
+Wait for Android to finish booting. In `dumpsys input`, confirm that `gpio-keys` uses `/data/system/devices/keylayout/gpio-keys.kl`.
+Set the display to 480×640 at density 190, then install both APKs as described above.
+Run the global routing checks without opening the microphone:
+
+```sh
+adb -s YOUR_EMULATOR_SERIAL shell am instrument -w -e button true \
+  dev.cameronpak.muser1.test/dev.cameronpak.muser1.DeviceChecks
+```
+
+Check for `PASS`, not just a successful `adb` exit code. The test covers the disabled-service notice and settings link, no window-content capability, returning Home from a settings hold, a failed hold staying awake, secure taps in Muse and settings, wake to PIN, the unlock-press boundary, service disable/re-enable, and unrelated-key pass-through.
+
+For the recording lifecycle, use an audio-disabled emulator and add `buttonRecording=true`:
+
+```sh
+adb -s YOUR_EMULATOR_SERIAL shell am instrument -w -e button true -e buttonRecording true \
+  dev.cameronpak.muser1.test/dev.cameronpak.muser1.DeviceChecks
+```
+
+This grants emulator microphone permission, exercises local `AudioRecord`, and checks cancellation on canceled release, foreground loss, and service unbind without adding a voice turn.
+It also checks that normal release reaches the send path. With no transport or credentials, that attempt produces the expected local `SEND FAILED` and cannot send audio to Muse.
+The fixture can add a failed local display-history turn; use only disposable data. A missing microphone permission is tested when permission is not already granted.
+
+Pull and inspect `files/side-button-controls.png` and `files/side-button-disabled.png` with `adb exec-out run-as` as in the history capture instructions.
+After a button-service change, rerun the existing visual, display-history, and process-restoration checks too.
+Physical button timing, LineageOS service recovery after reboot, speaker behavior on locking, and long-term reliability require separately authorized device checks.
+
 ## Physical-device checks
 
 After authorization, install the app and test APK with `adb install -r` and select the intended device explicitly.
+Enable **Side button controls** first. The default microphone and live voice-UI fixtures now route holds through that service rather than immediate activity key-down recording.
 The default instrumentation mode checks key dispatch, microphone samples, WAV lengths, and local audio playback:
 
 ```sh
@@ -132,7 +182,25 @@ Remove the fixture after testing with `adb -s YOUR_R1_SERIAL shell run-as dev.ca
 
 ## Verification status
 
-As of October 3, 2026, the installation and implementation threads reported:
+The global side-button change was verified locally on October 3, 2026:
+
+- App and test APK builds and all 34 JVM tests passed.
+- A disposable, unpaired, rooted Android 14 emulator passed global button checks using Linux input events: taps from Muse and settings, PIN-protected wake, the unlock-press boundary, settings holds returning Home, failed holds staying awake, service disable/re-enable, and unrelated-key pass-through.
+- An audio-disabled emulator passed local recording-lifecycle checks, including cancellation and normal release reaching the send path without contacting Muse.
+- Existing visual, display-history, and force-stop restoration checks passed. Side-button settings and disabled-service screenshots were inspected without clipping or tutorial overlays.
+- Android lint failed with 15 errors in unchanged recording, pairing, and vendored Noise code. An APK build is not a clean lint result.
+
+With the owner's authorization on October 3, 2026, the verified app APK was installed on the physical r1 using `adb install -r`, and **Side button controls** was enabled.
+The signing key matched the previous installation, and the installed APK hash matched the verified local build.
+Encrypted credentials, display history, identity preferences, and the original first-install time were unchanged.
+Android reported the service bound and running with key-filtering capability, no window-content capability, and no crashed services. PIN protection remained active, and the existing button mapping remained loaded.
+This installation did not open the microphone, run instrumentation or a live Muse test, clear app data, reboot, or change keylayouts.
+
+These side-button changes are installed but not confirmed hands-on or published as a release.
+Physical button feel, service recovery after reboot, playback stopping on lock, and long-term service reliability remain unverified.
+The [RabbitMuseOS plan](rabbit-muse-os.md) records the firmware destination; no firmware image has been built by this change.
+
+Earlier installation and implementation threads reported:
 
 - LineageOS 21 booted on one Rabbit r1; the side-button override was loaded, and injected events woke the display while preserving PIN lock.
 - The owner confirmed physical push-to-talk worked. Synthetic speech produced expected transcripts and replies and completed Android playback.
@@ -143,7 +211,7 @@ As of October 3, 2026, the installation and implementation threads reported:
 - The history thread subsequently reported the owner's hands-on confirmation that the installed display-history flow works: "Worked like a charm".
 
 Display history is verified locally, installed, and confirmed hands-on for the reported flow. Shake sensitivity tuning and long-term reliability remain unverified.
-These results were reported by the implementation threads, not rerun as part of documentation work.
+The earlier physical-device results were reported by those threads, not rerun during this side-button change.
 Hands-on transcript display, speaker loudness, long-term battery behavior, stock restoration, and other firmware builds remain unverified here.
 
 First-party code and documentation are licensed under [MIT](../LICENSE). Preserve the existing third-party licenses and notices.

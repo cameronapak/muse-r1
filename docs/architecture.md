@@ -6,13 +6,33 @@ Use [CONTEXT.md](../CONTEXT.md) for the glossary and [Development](development.m
 
 ## Voice path
 
-1. `MainActivity` receives a side-button `KEYCODE_PAIRING` event or a character hold.
+1. `SideButtonService` filters side-button `KEYCODE_PAIRING` events across apps. After a 300 ms hold in unlocked, foreground Muse r1, it asks `MainActivity` to begin recording. A character hold starts recording directly.
 2. `VoiceRecorder` records 16 kHz, mono, PCM16 samples. `Wave` wraps them in a WAV file in memory.
 3. Release sends a voice note through `MuseConnection`. Recordings under 0.3 seconds are discarded; recordings stop at 20 seconds.
 4. Muse supplies reply text. `MuseScreen` renders it, and `SpeechOutput` reads the completed reply through Android text-to-speech.
 
 Leaving the foreground cancels recording, stops playback, and disconnects the session.
 This is voice-note input, not live streaming dictation.
+
+## Global side button
+
+`SideButtonService` is an Android accessibility service enabled by the device owner.
+It requests key filtering, not window-content access. Unrelated keys pass through unchanged.
+The existing keylayout maps the physical button to the wake-capable `PAIRING` key; the service adds tap-to-lock without changing the mapping.
+
+`SideButtonGesture` distinguishes taps from holds and tracks the original press through release or cancellation.
+A tap requests Android's global lock-screen action, including outside Muse r1 and while a reply is pending or speaking.
+Locking stops playback and cancels recording; the app disconnects when it stops. An unfinished reply might not appear after unlock.
+A hold outside Muse r1 returns to the Home activity without recording on that press.
+
+A press that starts asleep or PIN-locked cannot record across unlock.
+Screen-off, wake, unlock, foreground loss, service interruption, and unbinding cancel pending or active button gestures.
+The service invokes recording only through an in-process activity reference; there is no public recording intent.
+A failed hold never becomes a lock tap. With the service disabled, the foreground app shows setup guidance and still supports character holds.
+Native power-menu behavior remains replaced, and tap-to-lock depends on the service being enabled and running.
+
+These controls have local and emulator evidence and are installed with the service bound on one physical r1. Hands-on button confirmation remains pending. See [Development](development.md#verification-status).
+[RabbitMuseOS](rabbit-muse-os.md) records the firmware destination and this service's role as a stepping stone.
 
 ## Pairing and credentials
 

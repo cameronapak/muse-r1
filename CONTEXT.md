@@ -12,12 +12,24 @@ _Avoid_: Muse r1, when referring to the assistant
 The Android app in this project that makes a Rabbit r1 a Muse gadget.
 _Avoid_: RabbitOS, Muse, when referring to this app
 
+**RabbitMuseOS**:
+The intended Rabbit r1 firmware distribution built around Muse, distinct from the Muse r1 app and the current LineageOS installation.
+_Avoid_: Muse r1, when referring to the firmware distribution
+
 **Pairing**:
 The association between a Muse r1 gadget and your Muse account.
 
 **Voice note**:
 A recording you submit to Muse as one message.
 _Avoid_: Streaming dictation
+
+**Side-button tap**:
+A brief press and release of the r1's right-side button, distinct from a hold to record a voice note.
+_Avoid_: Click, when referring to this gesture
+
+**Side-button hold**:
+A sustained press of the r1's right-side button for voice-note input after PIN unlock.
+_Avoid_: Long click
 
 **Transcript**:
 Muse's text representation of what you said in a voice note.

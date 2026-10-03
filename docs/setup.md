@@ -60,8 +60,10 @@ The r1 uses its existing Wi-Fi connection. Grant microphone permission when you 
 
 ## 4. Map the side button
 
-**This replaces normal side-button tap-to-lock and power-menu behavior.** It preserves PIN lock and does not change the scroll wheel or the separate PMIC power input.
+**This replaces Android's native side-button power behavior.** The service in the next step supplies tap-to-lock; native power-menu behavior remains replaced.
+It preserves PIN lock and does not change the scroll wheel or the separate PMIC power input.
 The override lives in userdata, not the system partition. You can [restore the original mapping](#restore-the-side-button).
+If this override is already loaded, keep it. The global button service does not need a new keylayout or reboot.
 
 On the r1, enable **Settings > System > Developer options > Rooted debugging**, then run:
 
@@ -77,26 +79,43 @@ adb shell dumpsys input
 ```
 
 In the `mtk-kpd` device section, check that `KeyLayoutFile` is `/data/system/devices/keylayout/mtk-kpd.kl`.
-The file maps Linux key `116` to Android `PAIRING`, a wake-capable key the app handles as push-to-talk.
+The file maps Linux key `116` to Android `PAIRING`, a wake-capable key handled by the global button service.
 Turn **Rooted debugging** off afterward.
 
-## 5. Use Muse r1 as your home screen
+## 5. Enable Side button controls
+
+1. In Muse r1, hold the empty background to open device controls, then choose **Side button settings**.
+2. In Android accessibility settings, select **Side button controls**, enable the service, and review Android's permission prompt.
+3. Return to Muse r1. Grant microphone permission when you first record.
+
+The service filters the side button across apps. It does not request window-content access or read personal conversations.
+If Android blocks enabling a sideloaded service with a restricted-settings warning, open **Settings > Apps > Muse r1**, use its menu to allow restricted settings, then return to accessibility settings.
+The exact Android labels can vary by build.
+
+Tap-to-lock depends on the service staying enabled and running. If it is disabled, Muse r1 shows setup guidance when it receives the button release; character holds still work.
+The global button behavior passed emulator checks. The verified APK is installed with the service bound on one physical r1; hands-on confirmation remains pending. See [verification status](development.md#verification-status).
+
+## 6. Use Muse r1 as your home screen
 
 ```sh
 adb shell cmd package set-home-activity dev.cameronpak.muser1/.MainActivity
 ```
 
 Unlock the r1, hold the side button, speak, and release. Muse returns text, and Android reads it aloud.
-Recordings last between 0.3 and 20 seconds. Leaving the app cancels recording without sending it.
+Recording starts after a 300 ms hold. Recordings last between 0.3 and 20 seconds, so a usable voice note needs roughly 0.6 seconds of total button hold plus startup time.
+Leaving the app cancels recording without sending it.
 You can also hold the character to talk. A tap on the character or a hold on the empty background opens device controls.
 Swipe from an edge to reveal Android's system bars temporarily.
 
-If the screen is locked, press the side button to wake it, unlock with your PIN, then hold to speak.
+Tap the side button to lock Android, including from Android settings or while Muse is replying or speaking. Locking stops playback and disconnects the foreground session; an unfinished reply might not appear after unlock.
+If the screen is locked, press the side button to wake it, release, unlock with your PIN, then hold again to speak. That wake or locked press cannot become a recording gesture.
+Holding in another app returns to Muse without recording on that press. A hold that cannot record shows why; it never becomes a lock tap.
 Check the recording indicator, release-to-send, reply, and audible playback on your device.
 Speech uses Android text-to-speech, not Muse's native voice.
 
 ## Recover or troubleshoot
 
+- **Button does not lock or record:** Re-enable **Side button controls** from device controls. Hold the character to talk while recovering, or [restore the native button mapping](#restore-the-side-button) over USB. Disabling the service does not automatically restore native power behavior.
 - **Not connected:** Open device controls and choose **Android settings** to check Wi-Fi, then **Reconnect to Muse**.
 - **No sound:** Check Android media volume and text-to-speech settings. The app prefers an available offline US English voice.
 - **No transcript:** Muse's reply and playback can still work. See [transcript limitations](architecture.md#transcripts).

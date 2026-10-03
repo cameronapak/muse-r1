@@ -1,0 +1,4 @@
+<resources>
+    <string name="side_button_label">Side button controls</string>
+    <string name="side_button_description">Tap the r1 side button to lock Android. Hold to talk to Muse after PIN unlock. A hold in another app returns to Muse without recording. This service filters the side button, leaves other keys unchanged, and does not read screen content.</string>
+</resources>

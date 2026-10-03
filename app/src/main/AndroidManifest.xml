@@ -17,6 +17,14 @@
         android:allowBackup="false"
         android:usesCleartextTraffic="false"
         android:theme="@style/Theme.Muse">
+        <service android:name=".SideButtonService" android:exported="true"
+            android:label="@string/side_button_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/side_button_service" />
+        </service>
         <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTask" android:screenOrientation="portrait">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

@@ -150,12 +150,13 @@ class MainActivity : Activity() {
         controls = AlertDialog.Builder(this)
             .setTitle("Device controls")
             .setItems(arrayOf(if (paired) "Reconnect to Muse" else "Pair with Muse", "Android settings",
-                "Return to idle", "Show conversation")) { _, item ->
+                "Return to idle", "Show conversation", "Side button settings")) { _, item ->
                 when (item) {
                     0 -> if (paired) { disconnect(); connect() } else startPairing()
                     1 -> startActivity(Intent(Settings.ACTION_SETTINGS))
                     2 -> screen.showIdle()
                     3 -> if (hasConversation) renderConversation()
+                    4 -> startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                 }
             }
             .setNegativeButton("Back to Muse", null)
@@ -189,6 +190,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        foreground = this
         loadHistory()
         shake.reset()
         sensors.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)?.let {
@@ -288,6 +290,28 @@ class MainActivity : Activity() {
         } catch (_: Exception) { recorder = null; updateStatus("MICROPHONE UNAVAILABLE") }
     }
 
+    internal fun sideButtonNotice(text: String) { screen.showNotice(text) }
+
+    internal fun beginSideButtonRecording(): Boolean {
+        when {
+            !hasWindowFocus() || controls?.isShowing == true || clearDialog?.isShowing == true ->
+                sideButtonNotice("Close the dialog, then hold the side button to talk.")
+            !historyLoaded -> sideButtonNotice("Display history is still loading. Try holding again in a moment.")
+            recording -> sideButtonNotice("A recording is already in progress.")
+            sending -> sideButtonNotice("Muse is still preparing your reply. Try holding again after it arrives.")
+            else -> { beginRecording(); return recording }
+        }
+        return false
+    }
+
+    internal fun finishSideButtonRecording(send: Boolean) { finishRecording(send) }
+
+    internal fun prepareForLock() {
+        finishRecording(false)
+        speech.stop()
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
+
     private fun finishRecording(send: Boolean) {
         if (!recording) return
         recording = false
@@ -354,10 +378,10 @@ class MainActivity : Activity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        // PAIRING is an Android wake key that also reaches the foreground app.
+        // The accessibility service owns this gesture globally. Never record via a second path.
         if (event.keyCode == KeyEvent.KEYCODE_PAIRING) {
-            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) beginRecording()
-            if (event.action == KeyEvent.ACTION_UP) finishRecording(true)
+            if (event.action == KeyEvent.ACTION_UP && SideButtonService.instance == null)
+                sideButtonNotice("Enable Side button controls in Android accessibility settings.\n\nOpen device controls, then Side button settings. You can still hold the character to talk.")
             return true
         }
         if (event.keyCode == KeyEvent.KEYCODE_MENU) {
@@ -373,6 +397,11 @@ class MainActivity : Activity() {
         if (hasConversation && !recording) renderConversation()
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); connection?.close(); connection = null
     }
+    override fun onPause() {
+        SideButtonService.instance?.activityPaused(this)
+        if (foreground === this) foreground = null
+        super.onPause()
+    }
     override fun onStop() {
         sensors.unregisterListener(shakeListener)
         shake.reset()
@@ -385,5 +414,10 @@ class MainActivity : Activity() {
     override fun onRequestPermissionsResult(code: Int, permissions: Array<out String>, results: IntArray) {
         super.onRequestPermissionsResult(code, permissions, results)
         if (code == 2 && results.all { it == PackageManager.PERMISSION_GRANTED }) startPairing()
+    }
+
+    companion object {
+        internal var foreground: MainActivity? = null
+            private set
     }
 }

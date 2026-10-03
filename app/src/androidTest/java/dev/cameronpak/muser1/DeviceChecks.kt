@@ -2,6 +2,8 @@ package dev.cameronpak.muser1
 
 import android.app.Activity
 import android.app.Instrumentation
+import android.app.KeyguardManager
+import android.app.UiAutomation
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -10,6 +12,8 @@ import android.graphics.Color
 import android.media.MediaPlayer
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.os.SystemClock
 import android.text.Spanned
 import android.text.style.ReplacementSpan
 import android.view.KeyEvent
@@ -32,6 +36,8 @@ class DeviceChecks : Instrumentation() {
     private var cloud = false
     private var voice = false
     private var visual = false
+    private var buttonCheck = false
+    private var buttonRecording = false
     private var historyCheck = false
     private var restoreHistory = false
     private var expectedReply = "Muse on Rabbit is working"
@@ -41,6 +47,8 @@ class DeviceChecks : Instrumentation() {
         cloud = arguments?.getString("cloud") == "true"
         voice = arguments?.getString("voice") == "true"
         visual = arguments?.getString("visual") == "true"
+        buttonCheck = arguments?.getString("button") == "true"
+        buttonRecording = arguments?.getString("buttonRecording") == "true"
         historyCheck = arguments?.getString("history") == "true"
         restoreHistory = arguments?.getString("restore") == "true"
         expectedReply = arguments?.getString("expected") ?: expectedReply
@@ -50,6 +58,7 @@ class DeviceChecks : Instrumentation() {
     override fun onStart() {
         val result = Bundle()
         try {
+            if (buttonCheck) { sideButtonCheck(result); finish(Activity.RESULT_OK, result); return }
             if (historyCheck) { displayHistoryCheck(result); finish(Activity.RESULT_OK, result); return }
             if (visual) { visualCheck(result); finish(Activity.RESULT_OK, result); return }
             if (cloud) { cloudCheck(result); finish(Activity.RESULT_OK, result); return }
@@ -61,7 +70,11 @@ class DeviceChecks : Instrumentation() {
             // Exercise the actual button dispatch and microphone, without sending a turn to Muse.
             runOnMainSync {
                 connected.setBoolean(app, true)
-                app.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_PAIRING))
+            }
+            val press = SystemClock.uptimeMillis()
+            runOnMainSync { sideButtonKey(KeyEvent.ACTION_DOWN, press) }
+            Thread.sleep(400)
+            runOnMainSync {
                 check((statusField.get(app) as TextView).text.toString() == "LISTENING")
             }
             Thread.sleep(1200)
@@ -86,10 +99,10 @@ class DeviceChecks : Instrumentation() {
             player.setOnCompletionListener { done.countDown() }; player.start()
             check(done.await(5, TimeUnit.SECONDS))
             player.release(); file.delete()
-            result.putString("stream", "PASS: PAIRING-key dispatch starts recording; nonzero 16kHz PCM captured; WAV lengths match; audio playback completed. No audio sent to Muse.")
+            result.putString("stream", "PASS: side-button service hold starts recording; nonzero 16kHz PCM captured; WAV lengths match; audio playback completed. No audio sent to Muse.")
             finish(Activity.RESULT_OK, result)
         } catch (error: Exception) {
-            val detail = if (visual || historyCheck) "\n${error.stackTraceToString()}" else ""
+            val detail = if (visual || historyCheck || buttonCheck) "\n${error.stackTraceToString()}" else ""
             result.putString("stream", result.getString("stream", "") + "FAIL: " + error.javaClass.simpleName + detail)
             finish(Activity.RESULT_CANCELED, result)
         }
@@ -151,15 +164,17 @@ class DeviceChecks : Instrumentation() {
             offset += 8 + size + (size and 1)
         }
         check(pcm != null && pcm.size in 9600..640000 && pcm.size % 2 == 0)
+        val press = SystemClock.uptimeMillis()
+        runOnMainSync { sideButtonKey(KeyEvent.ACTION_DOWN, press) }
+        Thread.sleep(400)
         runOnMainSync {
-            activity.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_PAIRING))
             check((statusField.get(activity) as TextView).text.toString() == "LISTENING")
             val recorder = recorderField.get(activity) as VoiceRecorder
             recorder.finish() // Stop the microphone before replacing every captured sample.
             val samples = VoiceRecorder::class.java.getDeclaredField("pcm").apply { isAccessible = true }
                 .get(recorder) as java.io.ByteArrayOutputStream
             samples.reset(); samples.write(pcm!!)
-            activity.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_PAIRING))
+            sideButtonKey(KeyEvent.ACTION_UP, press)
             check((statusField.get(activity) as TextView).text.toString() == "SENDING VOICE NOTE")
         }
         result.putString("stream", "Voice UI stage: button released with synthetic PCM only.\n")
@@ -206,6 +221,258 @@ class DeviceChecks : Instrumentation() {
         check(correct) { "Muse did not answer the voice test prompt" }
         check(transcriptCorrect) { "The spoken prompt did not appear as the user transcript" }
         result.putString("stream", "PASS: button down started recording; button up sent synthetic speech only; the expected user transcript and $textChars correct conversation characters rendered; Android speech started and completed; returned to READY.")
+    }
+
+    private fun sideButtonKey(action: Int, start: Long) {
+        val service = SideButtonService.instance ?: error("Enable Side button controls before this device test")
+        SideButtonService::class.java.getDeclaredMethod("onKeyEvent", KeyEvent::class.java)
+            .apply { isAccessible = true }
+            .invoke(service, KeyEvent(start, SystemClock.uptimeMillis(), action, KeyEvent.KEYCODE_PAIRING, 0))
+    }
+
+    /** Disposable emulator only. Tests real global key filtering without opening the microphone. */
+    private fun sideButtonCheck(result: Bundle) {
+        check(Build.HARDWARE in setOf("ranchu", "goldfish")) { "button fixtures require an emulator" }
+        val store = (targetContext.applicationContext as MuseApp).store
+        check(store.credentials() == null && store.sdkToken() == null) { "button fixtures require an unpaired emulator" }
+        val power = targetContext.getSystemService(PowerManager::class.java)
+        val keyguard = targetContext.getSystemService(KeyguardManager::class.java)
+        check(!keyguard.isDeviceSecure) { "button fixtures require an emulator without an existing PIN" }
+        val automation = getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES)
+        fun shell(command: String): String = automation.executeShellCommand(command).use {
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(it).use { input -> input.readBytes().toString(Charsets.UTF_8).trim() }
+        }
+        fun await(label: String, condition: () -> Boolean) {
+            repeat(100) { if (condition()) return; Thread.sleep(50) }
+            error(label)
+        }
+        // InputManager/UiAutomation injection bypasses the accessibility input filter.
+        // This disposable, rooted emulator maps gpio-keys Linux 116 to PAIRING.
+        check(shell("su 0 cat /data/system/devices/keylayout/gpio-keys.kl")
+            .contains(Regex("key\\s+116\\s+PAIRING"))) { "map the emulator gpio-keys to PAIRING first" }
+        fun kernelKey(action: Int, repeat: Int = 0) {
+            val value = if (action == KeyEvent.ACTION_UP) 0 else if (repeat > 0) 2 else 1
+            // UiAutomation uses Runtime.exec, not a shell that interprets quoting or semicolons.
+            check(shell("su 0 sendevent /dev/input/event0 1 116 $value").isBlank())
+            check(shell("su 0 sendevent /dev/input/event0 0 0 0").isBlank())
+        }
+        fun tap() {
+            kernelKey(KeyEvent.ACTION_DOWN); Thread.sleep(65); kernelKey(KeyEvent.ACTION_UP)
+        }
+        fun capture(name: String) {
+            Thread.sleep(250)
+            automation.takeScreenshot().let { bitmap ->
+                File(targetContext.filesDir, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                bitmap.recycle()
+            }
+        }
+        fun unlockPin() {
+            Thread.sleep(400) // Interactive power state precedes the keyguard's wake animation.
+            shell("input keyevent 82")
+            await("PIN entry did not appear") {
+                automation.rootInActiveWindow?.findAccessibilityNodeInfosByText("PIN")?.isNotEmpty() == true
+            }
+            shell("input text 2468"); shell("input keyevent 66")
+            await("fixture PIN did not unlock") { !keyguard.isDeviceLocked }
+        }
+        val originalServices = shell("settings get secure enabled_accessibility_services")
+        val originalEnabled = shell("settings get secure accessibility_enabled")
+        fun restoreSetting(key: String, value: String) {
+            shell(if (value == "null" || value.isBlank()) "settings delete secure $key" else "settings put secure $key $value")
+        }
+        var pinSet = false
+        try {
+            shell("settings delete secure enabled_accessibility_services")
+            shell("settings put secure accessibility_enabled 0")
+            await("service did not unbind") { SideButtonService.instance == null }
+            val activity = launchHome()
+            Thread.sleep(1000) // A fresh emulator can show Android's immersive-mode tutorial.
+            automation.rootInActiveWindow?.findAccessibilityNodeInfosByText("Got it")?.firstOrNull()
+                ?.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)
+            Thread.sleep(200)
+            val recording = MainActivity::class.java.getDeclaredField("recording").apply { isAccessible = true }
+            val screen = MainActivity::class.java.getDeclaredField("screen").apply { isAccessible = true }.get(activity) as MuseScreen
+            runOnMainSync {
+                activity.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_PAIRING))
+                activity.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_PAIRING))
+                check(!recording.getBoolean(activity) && screen.message.text.contains("Enable Side button controls"))
+            }
+            capture("side-button-disabled")
+            runOnMainSync { activity.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MENU)) }
+            capture("side-button-controls")
+            val settingsLink = automation.rootInActiveWindow.findAccessibilityNodeInfosByText("Side button settings").single()
+            check(settingsLink.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK))
+            await("accessibility settings did not open") { automation.rootInActiveWindow?.packageName == "com.android.settings" }
+
+            shell("settings put secure enabled_accessibility_services dev.cameronpak.muser1/.SideButtonService")
+            shell("settings put secure accessibility_enabled 1")
+            await("service did not bind") { SideButtonService.instance != null }
+            val info = SideButtonService.instance!!.serviceInfo
+            check(info.capabilities and android.accessibilityservice.AccessibilityServiceInfo.CAPABILITY_CAN_REQUEST_FILTER_KEY_EVENTS != 0)
+            check(info.capabilities and android.accessibilityservice.AccessibilityServiceInfo.CAPABILITY_CAN_RETRIEVE_WINDOW_CONTENT == 0)
+            Thread.sleep(200)
+            kernelKey(KeyEvent.ACTION_DOWN)
+            await("settings hold did not return to Muse") { MainActivity.foreground?.hasWindowFocus() == true }
+            Thread.sleep(150)
+            kernelKey(KeyEvent.ACTION_DOWN, 1)
+            kernelKey(KeyEvent.ACTION_UP)
+            val home = MainActivity.foreground!!
+            val homeScreen = MainActivity::class.java.getDeclaredField("screen").apply { isAccessible = true }.get(home) as MuseScreen
+            runOnMainSync { check(!recording.getBoolean(home)) }
+
+            Thread.sleep(100)
+            kernelKey(KeyEvent.ACTION_DOWN)
+            Thread.sleep(450)
+            kernelKey(KeyEvent.ACTION_UP)
+            runOnMainSync {
+                check(!recording.getBoolean(home))
+                check(homeScreen.message.text.contains("Pair this r1")) { "hold was not routed to recording guard" }
+            }
+            check(power.isInteractive) { "failed hold locked the display" }
+
+            if (buttonRecording) {
+                // Use an audio-disabled emulator. Exercise AudioRecord locally and always cancel.
+                val connected = MainActivity::class.java.getDeclaredField("connected").apply { isAccessible = true }
+                val recorder = MainActivity::class.java.getDeclaredField("recorder").apply { isAccessible = true }
+                val history = MainActivity::class.java.getDeclaredField("history").apply { isAccessible = true }
+                val gestureField = SideButtonService::class.java.getDeclaredField("gesture").apply { isAccessible = true }
+                if (targetContext.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    runOnMainSync { connected.setBoolean(home, true) }
+                    kernelKey(KeyEvent.ACTION_DOWN)
+                    await("microphone permission prompt did not appear") {
+                        automation.rootInActiveWindow?.findAccessibilityNodeInfosByText("allow")
+                            ?.any { it.text.toString().startsWith("Don") } == true
+                    }
+                    runOnMainSync { check(!recording.getBoolean(home) && recorder.get(home) == null) }
+                    kernelKey(KeyEvent.ACTION_UP)
+                    check(automation.rootInActiveWindow.findAccessibilityNodeInfosByText("allow")
+                        .single { it.text.toString().startsWith("Don") }
+                        .performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK))
+                    await("Muse did not resume after permission denial") { MainActivity.foreground?.hasWindowFocus() == true }
+                    check(power.isInteractive)
+                }
+                shell("pm grant dev.cameronpak.muser1 android.permission.RECORD_AUDIO")
+                for (cancellation in listOf("release", "pause", "unbind")) {
+                    if (MainActivity.foreground !== home) {
+                        shell("am start -n dev.cameronpak.muser1/.MainActivity")
+                        await("Muse did not return for recording check") { MainActivity.foreground === home && home.hasWindowFocus() }
+                    }
+                    var size = 0
+                    runOnMainSync { size = (history.get(home) as List<*>).size; connected.setBoolean(home, true) }
+                    Thread.sleep(150)
+                    kernelKey(KeyEvent.ACTION_DOWN)
+                    await("hold did not start local emulator recording") {
+                        var active = false
+                        runOnMainSync { active = recording.getBoolean(home) }
+                        active
+                    }
+                    runOnMainSync {
+                        val owner = SideButtonService::class.java.getDeclaredField("recordingActivity").apply { isAccessible = true }
+                        check(owner.get(SideButtonService.instance) === home && recorder.get(home) != null)
+                        check(homeScreen.status.text == "LISTENING")
+                    }
+                    when (cancellation) {
+                        "release" -> runOnMainSync {
+                            val service = SideButtonService.instance!!
+                            val start = (gestureField.get(service) as SideButtonGesture).downTime!!
+                            SideButtonService::class.java.getDeclaredMethod("onKeyEvent", KeyEvent::class.java).apply { isAccessible = true }
+                                .invoke(service, KeyEvent(start, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP,
+                                    KeyEvent.KEYCODE_PAIRING, 0, 0, 0, KeyEvent.FLAG_CANCELED))
+                        }
+                        "pause" -> {
+                            shell("am start -a android.settings.SETTINGS")
+                            await("Muse did not pause") { MainActivity.foreground == null }
+                        }
+                        "unbind" -> {
+                            shell("settings delete secure enabled_accessibility_services")
+                            await("service did not unbind during recording") { SideButtonService.instance == null }
+                        }
+                    }
+                    kernelKey(KeyEvent.ACTION_UP)
+                    runOnMainSync {
+                        check(!recording.getBoolean(home) && recorder.get(home) == null)
+                        check((history.get(home) as List<*>).size == size) { "cancellation created a voice turn" }
+                        connected.setBoolean(home, false)
+                    }
+                    if (cancellation == "unbind") {
+                        shell("settings put secure enabled_accessibility_services dev.cameronpak.muser1/.SideButtonService")
+                        await("service did not recover after recording cancellation") { SideButtonService.instance != null }
+                    }
+                    check(power.isInteractive) { "canceled recording locked the display" }
+                }
+                // No transport exists on this unpaired emulator: verify release reaches send,
+                // then reports the expected local failure instead of silently canceling the WAV.
+                var before = 0
+                runOnMainSync {
+                    check(MainActivity::class.java.getDeclaredField("connection").apply { isAccessible = true }.get(home) == null)
+                    before = (history.get(home) as List<*>).size
+                    connected.setBoolean(home, true)
+                }
+                Thread.sleep(150)
+                kernelKey(KeyEvent.ACTION_DOWN)
+                Thread.sleep(950)
+                kernelKey(KeyEvent.ACTION_UP)
+                await("normal release did not reach send") {
+                    var sent = false
+                    runOnMainSync { sent = (history.get(home) as List<*>).size == before + 1 && homeScreen.status.text == "SEND FAILED" }
+                    sent
+                }
+                runOnMainSync {
+                    check(!recording.getBoolean(home) && recorder.get(home) == null)
+                    connected.setBoolean(home, false)
+                }
+            }
+
+            // A PIN fixture lets us distinguish sleeping from a genuine secure lock.
+            check(shell("locksettings set-pin 2468").contains("set", ignoreCase = true))
+            pinSet = true
+            tap()
+            await("Muse tap did not lock") { !power.isInteractive && keyguard.isDeviceLocked }
+            tap()
+            await("PAIRING tap did not wake") { power.isInteractive }
+            check(keyguard.isDeviceLocked) { "wake bypassed PIN" }
+            Thread.sleep(200)
+            kernelKey(KeyEvent.ACTION_DOWN)
+            Thread.sleep(400)
+            unlockPin()
+            Thread.sleep(150)
+            kernelKey(KeyEvent.ACTION_DOWN, 1)
+            kernelKey(KeyEvent.ACTION_UP)
+            check(power.isInteractive) { "unlock press became a lock tap" }
+            val gestureField = SideButtonService::class.java.getDeclaredField("gesture").apply { isAccessible = true }
+            runOnMainSync {
+                check((gestureField.get(SideButtonService.instance) as SideButtonGesture).downTime == null)
+                MainActivity.foreground?.let { check(!recording.getBoolean(it)) }
+            }
+
+            shell("am start -a android.settings.SETTINGS")
+            await("Android settings did not gain foreground") { MainActivity.foreground == null }
+            Thread.sleep(200)
+            tap()
+            await("settings tap did not lock") { !power.isInteractive && keyguard.isDeviceLocked }
+            shell("input keyevent 224")
+            await("display did not wake for cleanup") { power.isInteractive }
+            unlockPin()
+            // Disable and re-enable without killing Muse: binding must recover.
+            shell("settings delete secure enabled_accessibility_services")
+            await("disabled service remained connected") { SideButtonService.instance == null }
+            shell("settings put secure enabled_accessibility_services dev.cameronpak.muser1/.SideButtonService")
+            await("service did not reconnect") { SideButtonService.instance != null }
+            runOnMainSync {
+                val service = SideButtonService.instance!!
+                val method = SideButtonService::class.java.getDeclaredMethod("onKeyEvent", KeyEvent::class.java).apply { isAccessible = true }
+                check(method.invoke(service, KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_VOLUME_DOWN)) == false)
+            }
+            result.putString("stream", "PASS: real global filtering; disabled-service guidance and settings link; no window-content capability; settings hold returns Home without recording; failed hold stays awake; taps lock from Muse and settings; PAIRING wakes without bypassing PIN; unlock press cannot record or lock; service disable/re-enable recovers; volume key not consumed. " +
+                if (buttonRecording) "Local emulator recording starts on hold and cancels on canceled release, foreground loss, and service unbind without adding a turn; normal release reaches the send path and the expected failure without a transport. No audio sent to Muse."
+                else "No microphone or Muse turn used.")
+        } finally {
+            kernelKey(KeyEvent.ACTION_UP)
+            if (pinSet) shell("locksettings clear --old 2468")
+            restoreSetting("enabled_accessibility_services", originalServices)
+            restoreSetting("accessibility_enabled", originalEnabled)
+            shell("input keyevent 224"); shell("wm dismiss-keyguard")
+        }
     }
 
     /** Emulator-only fixtures: render real Android views without recording or submitting a Muse turn. */

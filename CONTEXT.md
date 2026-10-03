@@ -13,8 +13,8 @@ The Android app in this project that makes a Rabbit r1 a Muse gadget.
 _Avoid_: RabbitOS, Muse, when referring to this app
 
 **RabbitMuseOS**:
-The intended Rabbit r1 firmware distribution built around Muse, distinct from the Muse r1 app and the current LineageOS installation.
-_Avoid_: Muse r1, when referring to the firmware distribution
+The deferred Rabbit r1 firmware idea, distinct from the Muse r1 app and the current LineageOS installation. No custom ROM work is scheduled.
+_Avoid_: Muse r1, when referring to the firmware idea
 
 **Pairing**:
 The association between a Muse r1 gadget and your Muse account.

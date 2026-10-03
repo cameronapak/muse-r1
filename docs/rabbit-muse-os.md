@@ -1,8 +1,10 @@
 # RabbitMuseOS direction and side-button plan
 
-RabbitMuseOS is the intended Rabbit r1 firmware distribution built around Muse.
+On October 3, 2026, the owner chose the app over a custom ROM (see [ADR 0002](adr/0002-app-not-custom-rom.md)). Ship the Muse r1 Home app on the current LineageOS installation with userdata tweaks only. No GSI build, image signing, firmware flashing, or system writes.
+
+RabbitMuseOS names that deferred firmware idea, distinct from the Muse r1 app and the current LineageOS installation.
 The goal is a device that feels like an OS just for Muse, with consistent hardware controls outside the app.
-An APK on LineageOS is a stepping stone, not the final distribution goal.
+An APK on LineageOS is the distribution path.
 
 ## Status
 
@@ -70,17 +72,17 @@ Recovery: re-enable the service through device controls, or use the [USB rollbac
 Do not claim automatic restoration of native power behavior when the service is disabled or fails.
 Physical-device installation, settings changes, keylayout changes, rebooting, and live Muse tests require separate authorization.
 
-## Firmware destination
+## Button service, not firmware
 
-The eventual distribution is a RabbitMuseOS firmware image with Muse r1 as the primary device experience and button support included in device setup.
-The button contract above should survive the transition from APK installation to firmware distribution.
-Do not assume the accessibility service must remain the firmware implementation.
+The distribution is the Muse r1 APK with button support the owner enables in device setup.
+The button contract above describes the shipped APK behavior.
+Do not assume the accessibility service must remain the implementation if firmware work ever resumes.
 
-A LineageOS framework change is the alternative if the service cannot meet the contract, or if native power handling is needed for the firmware.
+A LineageOS framework change is the fallback if the service cannot meet the contract, or if native power handling is ever needed.
 That approach restores the side button to `POWER` and adds a guarded Muse hold action with matching release and cancellation handling.
 Stock LineageOS power-button settings alone do not expose the full press-and-release lifecycle needed for push-to-talk.
 
-Before distributing firmware, resolve the base image and build process, signing and updates, device compatibility, recovery and power-menu access, and applicable redistribution rights.
+Before any future firmware work, resolve the base image and build process, signing and updates, device compatibility, recovery and power-menu access, and applicable redistribution rights.
 Existing vendor and kernel dependencies, bootloader and flashing risks, and the character illustration's unestablished redistribution rights remain relevant.
 Do not bundle SDK tokens, paired credentials, personal display history, or device identifiers in an image.
 Neither a public firmware release nor flashing a physical device is authorized by this plan.
@@ -98,7 +100,7 @@ For the service stepping stone:
 - After authorization, verify the physical side button, tap and hold feel, boot and wake behavior, and preservation of pairing and PIN protection.
 - After authorization, confirm the physical wheel's mapping and direction, volume steps, and audible speaker output during playback. Emulator input and TTS checks do not establish those hardware results.
 
-For firmware, additionally verify reproducible builds, installation and recovery on the supported hardware, update behavior, and preservation or explicit migration of pairing and display history.
+For firmware work, if it ever resumes, additionally verify reproducible builds, installation and recovery on the supported hardware, update behavior, and preservation or explicit migration of pairing and display history.
 Keep local checks, device installation, hands-on confirmation, and release status separate in [Development](development.md#verification-status).
 
 ## Research references

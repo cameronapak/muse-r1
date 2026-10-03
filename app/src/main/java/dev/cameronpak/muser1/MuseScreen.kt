@@ -8,6 +8,7 @@ import android.text.Spanned
 import android.text.style.ForegroundColorSpan
 import android.text.style.RelativeSizeSpan
 import android.text.style.ReplacementSpan
+import android.util.TypedValue
 import android.view.GestureDetector
 import android.view.Gravity
 import android.view.MotionEvent
@@ -97,16 +98,10 @@ internal class MuseScreen(
         visibility = View.GONE
         setOnClickListener { jumpToLatest() }
     }
-    private val volume = text("", 13f, orange).apply {
-        gravity = Gravity.CENTER
-        background = android.graphics.drawable.GradientDrawable().apply {
-            setColor(Color.rgb(32, 29, 25))
-            cornerRadius = dp(18).toFloat()
-        }
-        accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
-        visibility = View.GONE
+    private val volume = VolumeOverlay(context)
+    private val dismissVolume = Runnable {
+        volume.animate().alpha(0f).setDuration(180).withEndAction { hideVolume() }.start()
     }
-    private val dismissVolume = Runnable { volume.visibility = View.GONE }
 
     init {
         setBackgroundColor(background)
@@ -138,7 +133,9 @@ internal class MuseScreen(
     }
 
     fun showVolume(current: Int, max: Int) {
-        volume.text = "Volume ${if (max > 0) current * 100 / max else 0}%"
+        volume.animate().cancel()
+        volume.alpha = 1f
+        volume.setLevel(current, max)
         volume.visibility = View.VISIBLE
         removeCallbacks(dismissVolume)
         postDelayed(dismissVolume, 1500)
@@ -146,6 +143,7 @@ internal class MuseScreen(
 
     fun hideVolume() {
         removeCallbacks(dismissVolume)
+        volume.animate().cancel()
         volume.visibility = View.GONE
     }
 
@@ -286,6 +284,7 @@ internal class MuseScreen(
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) hideVolume()
         controlsGesture.onTouchEvent(event)
         return super.dispatchTouchEvent(event)
     }
@@ -305,7 +304,7 @@ internal class MuseScreen(
         hint.measure(exact(w - dp(20)), exact(dp(36)))
         clearHistory.measure(exact(dp(48)), exact(dp(48)))
         latest.measure(exact(dp(48)), exact(dp(48)))
-        volume.measure(exact(dp(120)), exact(dp(36)))
+        volume.measure(exact(w), exact(h))
     }
 
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
@@ -326,7 +325,7 @@ internal class MuseScreen(
         hint.layout(dp(10), height - dp(53), width - dp(10), height - dp(17))
         clearHistory.layout(width - dp(62), dp(14), width - dp(14), dp(62))
         latest.layout((width - dp(48)) / 2, height - dp(68), (width + dp(48)) / 2, height - dp(20))
-        volume.layout(dp(14), dp(14), dp(134), dp(50))
+        volume.layout(0, 0, width, height)
         updateLatestButton()
     }
 
@@ -348,15 +347,11 @@ internal class MuseScreen(
         val drawn = super.drawChild(canvas, child, drawingTime)
         if (child === scroll && latest.visibility == View.VISIBLE)
             canvas.drawRect(0f, height - dp(100).toFloat(), width.toFloat(), height.toFloat(), latestFade)
-        return drawn
-    }
-
-    override fun dispatchDraw(canvas: Canvas) {
-        super.dispatchDraw(canvas)
-        if (scroll.visibility == View.VISIBLE && scroll.scrollY > 0) {
+        if (child === scroll && scroll.scrollY > 0) {
             // Cover clipped glyphs at the edge before fading into the readable transcript.
             canvas.drawRect(0f, scroll.top.toFloat(), width.toFloat(), scroll.top + dp(24).toFloat(), transcriptFade)
         }
+        return drawn
     }
 
     override fun onDetachedFromWindow() {
@@ -374,6 +369,79 @@ internal class MuseScreen(
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 
     private enum class Phase { QUIET, LISTENING, THINKING, SPEAKING }
+
+    private inner class VolumeOverlay(context: Context) : View(context) {
+        private val ink = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val speaker = Path()
+        private var level = 0
+        private var steps = 0
+
+        init {
+            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            visibility = View.GONE
+        }
+
+        fun setLevel(current: Int, max: Int) {
+            level = current
+            steps = max
+            contentDescription = if (current == 0) "Media volume muted" else "Media volume $current of $max"
+            invalidate()
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            canvas.drawColor(Color.argb(230, 10, 11, 10))
+            val cx = width / 2f
+            val cy = height / 2f
+            ink.style = Paint.Style.FILL
+            ink.color = cream
+            ink.textAlign = Paint.Align.CENTER
+            ink.textSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 13f, resources.displayMetrics)
+            ink.typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
+            canvas.drawText("V O L U M E", cx, cy - dp(100), ink)
+
+            canvas.save()
+            canvas.translate(cx - dp(6), cy - dp(10).toFloat())
+            speaker.rewind()
+            speaker.moveTo(-dp(42).toFloat(), -dp(14).toFloat())
+            speaker.lineTo(-dp(26).toFloat(), -dp(14).toFloat())
+            speaker.lineTo(0f, -dp(36).toFloat())
+            speaker.lineTo(0f, dp(36).toFloat())
+            speaker.lineTo(-dp(26).toFloat(), dp(14).toFloat())
+            speaker.lineTo(-dp(42).toFloat(), dp(14).toFloat())
+            speaker.close()
+            ink.color = if (level == 0) muted else cream
+            canvas.drawPath(speaker, ink)
+            ink.style = Paint.Style.STROKE
+            ink.strokeWidth = dp(5).toFloat()
+            ink.strokeCap = Paint.Cap.ROUND
+            ink.color = orange
+            if (level == 0) {
+                canvas.drawLine(dp(14).toFloat(), -dp(12).toFloat(), dp(38).toFloat(), dp(12).toFloat(), ink)
+                canvas.drawLine(dp(14).toFloat(), dp(12).toFloat(), dp(38).toFloat(), -dp(12).toFloat(), ink)
+            } else if (steps > 0) {
+                // One, two, then three sound waves across the lower, middle, and upper thirds.
+                repeat((level * 3 + steps - 1) / steps) { index ->
+                    val radius = dp(26 + index * 14).toFloat()
+                    canvas.drawArc(-radius, -radius, radius, radius, -40f, 80f, false, ink)
+                }
+            }
+            canvas.restore()
+
+            if (steps > 0) {
+                val gap = dp(4).toFloat()
+                val cell = min(dp(28).toFloat(), (width - dp(52) - gap * (steps - 1)) / steps)
+                val left = (width - cell * steps - gap * (steps - 1)) / 2
+                val top = cy + dp(70)
+                ink.style = Paint.Style.FILL
+                repeat(steps) { index ->
+                    ink.color = if (index < level) orange else Color.rgb(46, 43, 39)
+                    val x = left + index * (cell + gap)
+                    canvas.drawRoundRect(x, top, x + cell, top + cell, cell * .2f, cell * .2f, ink)
+                }
+            }
+        }
+    }
 
     private inner class IconButton(context: Context, label: String, private val downArrow: Boolean) : View(context) {
         private val ink = Paint(Paint.ANTI_ALIAS_FLAG)

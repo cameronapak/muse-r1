@@ -37,15 +37,18 @@ These controls have local and emulator evidence and are installed with the servi
 ### Side-button and wheel volume
 
 In unlocked, foreground Muse r1, hold the side button and turn the wheel. Up increases Android media volume; down decreases it. Alarms and other sound settings are unchanged.
-`MainActivity` routes wheel `DPAD_UP` and `DPAD_DOWN` key events to `SideButtonService`, which checks the press origin, foreground activity, window focus, and lock state.
+`SideButtonService` filters held-wheel `DPAD_UP` and `DPAD_DOWN` key events before Android delivers them to the app. It checks the press origin, foreground activity, window focus, and lock state, then asks `MainActivity` to adjust volume.
+Filtering before `ViewRootImpl` prevents the first wheel event from leaving touch mode or focusing a background control before Activity key dispatch.
 The [published r1 wheel driver](rabbit-muse-os.md#research-references) emits Linux up/down key events rather than Android scroll motion events. This change does not remap the wheel.
 
 The first wheel movement cancels and discards any recording started by that side-button press and claims it through release. Release cannot send or lock. Matching wheel key-ups are consumed even if the side button is released first; wheel events without an eligible side-button press retain normal navigation.
-`MuseScreen` shows a volume percentage for 1.5 seconds after the last adjustment and hides it on pause.
+`MuseScreen` dims the background beneath a centered volume overlay. It shows one square per media-volume step, with filled squares for the current level and no visible numbers. The speaker has one, two, or three sound waves across the lower, middle, and upper thirds of the volume range; zero shows a muted speaker with an X and no waves.
+The overlay waits 1.5 seconds after the last adjustment, then fades out over 180 ms. It hides immediately on pause or touch; that touch still reaches its normal control. Accessibility descriptions retain the numeric level and maximum or announce muted volume.
 
 `SpeechOutput.hasPlayback` includes both queued and active speech. A side-button hold beginning during playback preserves it and cannot record later on that press, even if playback ends. A tap still locks; a character hold still interrupts playback to record.
 Playback starting after button-down does not change an ordinary press into a playback-preserving press.
-The volume change passes local and emulator checks and is installed on one physical r1 with pairing preserved. Its wheel keylayout maps scan codes 103/108 to `DPAD_UP`/`DPAD_DOWN`. Physical wheel events, direction, and audible speaker output remain unverified there.
+The original volume shortcut is installed on one physical r1 with pairing preserved, and the owner confirmed that it works. Its wheel keylayout maps scan codes 103/108 to `DPAD_UP`/`DPAD_DOWN`.
+The larger overlay and earlier key filtering pass local and emulator checks but are not installed on the physical r1. Their physical timing and appearance, audible speaker output, and long-term reliability remain unverified. See [verification status](development.md#verification-status).
 
 ## Pairing and credentials
 

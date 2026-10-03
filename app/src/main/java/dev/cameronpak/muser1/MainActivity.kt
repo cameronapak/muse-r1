@@ -26,7 +26,6 @@ import kotlinx.coroutines.*
 class MainActivity : Activity() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val store get() = (application as MuseApp).store
-    private val volumeKeys = mutableMapOf<Int, Long>()
     private var pairing: PairingServer? = null
     private var connection: MuseConnection? = null
     private var recorder: VoiceRecorder? = null
@@ -418,17 +417,6 @@ class MainActivity : Activity() {
             if (event.action == KeyEvent.ACTION_UP) showControls()
             return true
         }
-        if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP || event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
-            if (event.action == KeyEvent.ACTION_UP && volumeKeys[event.keyCode] == event.downTime) {
-                volumeKeys.remove(event.keyCode)
-                return true
-            }
-            if (event.action == KeyEvent.ACTION_DOWN && SideButtonService.instance?.onWheel(this,
-                    if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP) 1 else -1) == true) {
-                volumeKeys[event.keyCode] = event.downTime
-                return true
-            }
-        }
         return super.dispatchKeyEvent(event)
     }
 
@@ -441,7 +429,6 @@ class MainActivity : Activity() {
     override fun onPause() {
         SideButtonService.instance?.activityPaused(this)
         screen.hideVolume()
-        volumeKeys.clear()
         if (foreground === this) foreground = null
         super.onPause()
     }

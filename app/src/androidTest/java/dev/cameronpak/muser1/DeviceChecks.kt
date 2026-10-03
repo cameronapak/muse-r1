@@ -17,6 +17,7 @@ import android.os.PowerManager
 import android.os.SystemClock
 import android.text.Spanned
 import android.text.style.ReplacementSpan
+import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
@@ -228,10 +229,14 @@ class DeviceChecks : Instrumentation() {
     }
 
     private fun sideButtonKey(action: Int, start: Long) {
+        filteredKey(KeyEvent(start, SystemClock.uptimeMillis(), action, KeyEvent.KEYCODE_PAIRING, 0))
+    }
+
+    private fun filteredKey(event: KeyEvent): Boolean {
         val service = SideButtonService.instance ?: error("Enable Side button controls before this device test")
-        SideButtonService::class.java.getDeclaredMethod("onKeyEvent", KeyEvent::class.java)
+        return SideButtonService::class.java.getDeclaredMethod("onKeyEvent", KeyEvent::class.java)
             .apply { isAccessible = true }
-            .invoke(service, KeyEvent(start, SystemClock.uptimeMillis(), action, KeyEvent.KEYCODE_PAIRING, 0))
+            .invoke(service, event) as Boolean
     }
 
     /** Unpaired, audio-disabled emulator only. No live transport or household microphone input. */
@@ -263,8 +268,10 @@ class DeviceChecks : Instrumentation() {
             fun wheel(up: Boolean): Boolean {
                 val key = if (up) KeyEvent.KEYCODE_DPAD_UP else KeyEvent.KEYCODE_DPAD_DOWN
                 val now = SystemClock.uptimeMillis()
-                val consumed = activity.dispatchKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, key, 0))
-                val released = activity.dispatchKeyEvent(KeyEvent(now, now + 1, KeyEvent.ACTION_UP, key, 0))
+                val consumed = filteredKey(KeyEvent(now, now, KeyEvent.ACTION_DOWN, key, 0))
+                val released = filteredKey(KeyEvent(now, now + 1, KeyEvent.ACTION_UP, key, 0))
+                if (!consumed) activity.dispatchKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, key, 0))
+                if (!released) activity.dispatchKeyEvent(KeyEvent(now, now + 1, KeyEvent.ACTION_UP, key, 0))
                 return consumed && released
             }
             fun onMain(block: () -> Unit) {
@@ -272,10 +279,31 @@ class DeviceChecks : Instrumentation() {
                 runOnMainSync { try { block() } catch (error: Throwable) { failure = error } }
                 failure?.let { throw it }
             }
-            fun indicator(): TextView {
-                val views = arrayListOf<View>()
-                screen.findViewsWithText(views, "Volume", View.FIND_VIEWS_WITH_TEXT)
-                return views.filterIsInstance<TextView>().single { it.text.matches(Regex("Volume \\d+%")) }
+            val indicator = MuseScreen::class.java.getDeclaredField("volume").apply { isAccessible = true }.get(screen) as View
+            // Inspect rendered pixels on both sides of each wave threshold, with a ten-step scale.
+            onMain {
+                val density = screen.resources.displayMetrics.density
+                fun dp(value: Int) = (value * density).toInt()
+                val orange = Color.rgb(255, 139, 66)
+                val dark = Color.rgb(46, 43, 39)
+                for ((level, waves) in listOf(0 to 0, 1 to 1, 3 to 1, 4 to 2, 6 to 2, 7 to 3, 10 to 3)) {
+                    screen.showVolume(level, 10)
+                    val bitmap = Bitmap.createBitmap(screen.width, screen.height, Bitmap.Config.ARGB_8888)
+                    indicator.draw(Canvas(bitmap))
+                    val y = screen.height / 2 + dp(70) + dp(5)
+                    val row = (0 until bitmap.width).map { bitmap.getPixel(it, y) }
+                    fun runs(color: Int) = row.indices.count { row[it] == color && (it == 0 || row[it - 1] != color) }
+                    check(runs(orange) == level && runs(dark) == 10 - level) { "wrong square count at $level of 10" }
+                    // Sample the three arcs away from the muted X, at approximately -30 degrees.
+                    for ((index, point) in listOf(22.5f to -13f, 34.6f to -20f, 46.8f to -27f).withIndex()) {
+                        val pixel = bitmap.getPixel(screen.width / 2 - dp(6) + (point.first * density).toInt(),
+                            screen.height / 2 - dp(10) + (point.second * density).toInt())
+                        check((pixel == orange) == (index < waves)) { "wrong wave count at $level of 10" }
+                    }
+                    check((bitmap.getPixel(screen.width / 2 - dp(6) + dp(32), screen.height / 2 - dp(10) + dp(6)) == orange) == (level == 0)) { "muted X must appear only at zero" }
+                    bitmap.recycle()
+                }
+                screen.hideVolume()
             }
             fun capture(name: String) {
                 Thread.sleep(120)
@@ -293,7 +321,8 @@ class DeviceChecks : Instrumentation() {
                 sideButtonKey(KeyEvent.ACTION_DOWN, press)
                 check(wheel(true)) { "held wheel was not consumed" }
                 check(audio.getStreamVolume(AudioManager.STREAM_MUSIC) == 3) { "held wheel did not raise media volume" }
-                check(indicator().isShown) { "volume indicator is missing" }
+                check(indicator.isShown && indicator.width == screen.width && indicator.height == screen.height) { "volume overlay must fill the screen" }
+                check(indicator.contentDescription == "Media volume 3 of $max")
             }
             capture("volume-idle")
             onMain {
@@ -301,10 +330,10 @@ class DeviceChecks : Instrumentation() {
                 check(audio.getStreamVolume(AudioManager.STREAM_MUSIC) == 2)
                 audio.setStreamVolume(AudioManager.STREAM_MUSIC, max, 0)
                 check(wheel(true))
-                check(audio.getStreamVolume(AudioManager.STREAM_MUSIC) == max && indicator().text == "Volume 100%")
+                check(audio.getStreamVolume(AudioManager.STREAM_MUSIC) == max && indicator.contentDescription == "Media volume $max of $max")
                 audio.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0)
                 check(wheel(false))
-                check(audio.getStreamVolume(AudioManager.STREAM_MUSIC) == 0 && indicator().text == "Volume 0%")
+                check(audio.getStreamVolume(AudioManager.STREAM_MUSIC) == 0 && indicator.contentDescription == "Media volume muted")
                 audio.setStreamVolume(AudioManager.STREAM_MUSIC, 2, 0)
                 sideButtonKey(KeyEvent.ACTION_UP, press)
             }
@@ -314,17 +343,13 @@ class DeviceChecks : Instrumentation() {
                 press = SystemClock.uptimeMillis()
                 sideButtonKey(KeyEvent.ACTION_DOWN, press)
                 val now = SystemClock.uptimeMillis()
-                check(activity.dispatchKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_UP, 0)))
+                check(filteredKey(KeyEvent(now, now, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_UP, 0)))
                 sideButtonKey(KeyEvent.ACTION_UP, press)
-                check(activity.dispatchKeyEvent(KeyEvent(now, now + 1, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_UP, 0)))
+                check(filteredKey(KeyEvent(now, now + 1, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_UP, 0)))
                 check(audio.getStreamVolume(AudioManager.STREAM_MUSIC) == 3) { "r1 DPAD wheel did not raise volume" }
             }
-            Thread.sleep(1600)
-            onMain {
-                val visible = arrayListOf<View>()
-                screen.findViewsWithText(visible, "Volume", View.FIND_VIEWS_WITH_TEXT)
-                check(visible.filterIsInstance<TextView>().none { it.text.matches(Regex("Volume \\d+%")) }) { "volume indicator did not dismiss" }
-            }
+            Thread.sleep(1800)
+            onMain { check(!indicator.isShown) { "volume overlay did not fade away" } }
             val speech = MainActivity::class.java.getDeclaredField("speech").apply { isAccessible = true }.get(activity) as SpeechOutput
             val reply = "This is a local volume test. ".repeat(30)
             val displayedReply = "You can change the volume without interrupting this reply."
@@ -343,10 +368,12 @@ class DeviceChecks : Instrumentation() {
                 check(speech.hasPlayback) { "volume change stopped local TTS" }
             }
             capture("volume-speaking")
+            onMain { audio.setStreamVolume(AudioManager.STREAM_MUSIC, max, 0); check(wheel(true)) }
+            capture("volume-high")
             onMain {
                 audio.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0)
                 check(wheel(false))
-                check(speech.hasPlayback && indicator().text == "Volume 0%")
+                check(speech.hasPlayback && indicator.contentDescription == "Media volume muted")
             }
             capture("volume-muted")
             onMain {
@@ -427,9 +454,12 @@ class DeviceChecks : Instrumentation() {
             val avatar = MuseScreen::class.java.getDeclaredField("avatar").apply { isAccessible = true }.get(screen) as View
             onMain {
                 check(speech.hasPlayback)
-                MotionEvent.obtain(0, 0, MotionEvent.ACTION_DOWN, 10f, 10f, 0).let { avatar.dispatchTouchEvent(it); it.recycle() }
-                check(screen.status.text == "LISTENING" && !speech.hasPlayback)
-                MotionEvent.obtain(0, 400, MotionEvent.ACTION_CANCEL, 10f, 10f, 0).let { avatar.dispatchTouchEvent(it); it.recycle() }
+                screen.showVolume(3, max)
+                val x = (avatar.left + avatar.right) / 2f
+                val y = (avatar.top + avatar.bottom) / 2f
+                MotionEvent.obtain(0, 0, MotionEvent.ACTION_DOWN, x, y, 0).let { screen.dispatchTouchEvent(it); it.recycle() }
+                check(screen.status.text == "LISTENING" && !speech.hasPlayback && !indicator.isShown) { "volume overlay blocked the character hold" }
+                MotionEvent.obtain(0, 400, MotionEvent.ACTION_CANCEL, x, y, 0).let { screen.dispatchTouchEvent(it); it.recycle() }
                 check(screen.status.text == "READY")
                 connected.setBoolean(activity, false)
                 screen.showConversation("Read earlier turns", "Earlier reply. ".repeat(100))
@@ -453,8 +483,63 @@ class DeviceChecks : Instrumentation() {
                 check(wheel(true) && scroll.scrollY == position) { "volume wheel also scrolled history" }
                 sideButtonKey(KeyEvent.ACTION_UP, press)
             }
+            // Real InputReader delivery must not exit touch mode before Activity dispatch.
+            // UiAutomation key injection bypasses accessibility filtering, so create a kernel wheel.
+            val pipes = automation.executeShellCommandRw("su 0 uinput -")
+            try {
+                android.os.ParcelFileDescriptor.AutoCloseOutputStream(pipes[1]).bufferedWriter().use { wheelInput ->
+                    fun send(json: String) { wheelInput.write(json); wheelInput.newLine(); wheelInput.flush() }
+                    // Android 14 uses numeric uinput constants: UI_SET_EVBIT=100, UI_SET_KEYBIT=101.
+                    send("""{"id":1,"command":"register","name":"Muse volume test wheel","vid":6353,"pid":49374,"bus":"usb","configuration":[{"type":100,"data":[1]},{"type":101,"data":[103,108]}]}""")
+                    fun await(label: String, condition: () -> Boolean) {
+                        val end = SystemClock.uptimeMillis() + 5000
+                        while (!condition() && SystemClock.uptimeMillis() < end) Thread.sleep(20)
+                        check(condition()) { label }
+                    }
+                    await("kernel wheel did not register") {
+                        InputDevice.getDeviceIds().any { InputDevice.getDevice(it)?.name == "Muse volume test wheel" }
+                    }
+                    fun kernelWheel() {
+                        send("""{"id":1,"command":"inject","events":[1,108,1,0,0,0,1,108,0,0,0,0]}""")
+                    }
+                    fun button(value: Int) {
+                        check(shell("su 0 sendevent /dev/input/event0 1 116 $value").isBlank())
+                        check(shell("su 0 sendevent /dev/input/event0 0 0 0").isBlank())
+                    }
+                    onMain { screen.hideVolume(); scroll.isFocusableInTouchMode = false; scroll.scrollTo(0, 0); screen.clearFocus() }
+                    val now = SystemClock.uptimeMillis()
+                    for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+                        MotionEvent.obtain(now, now + action, action, 40f, 600f, 0).let {
+                            it.source = InputDevice.SOURCE_TOUCHSCREEN
+                            check(automation.injectInputEvent(it, true)); it.recycle()
+                        }
+                    }
+                    var focus: View? = null
+                    onMain {
+                        check(screen.isInTouchMode) { "touch-mode fixture failed" }
+                        focus = screen.findFocus()
+                        audio.setStreamVolume(AudioManager.STREAM_MUSIC, 8, 0)
+                    }
+                    button(1)
+                    try {
+                        kernelWheel() // Immediately after the side button, before the hold threshold.
+                        await("first kernel wheel did not change media volume") { audio.getStreamVolume(AudioManager.STREAM_MUSIC) == 7 }
+                        onMain {
+                            check(screen.isInTouchMode && screen.findFocus() === focus && scroll.scrollY == 0) { "held kernel wheel focused or scrolled the background" }
+                        }
+                    } finally { button(0) }
+                    onMain { screen.hideVolume() }
+                    kernelWheel()
+                    await("unheld kernel wheel did not enter navigation mode") {
+                        var navigates = false
+                        onMain { navigates = !screen.isInTouchMode && screen.findFocus() != null }
+                        navigates
+                    }
+                    check(audio.getStreamVolume(AudioManager.STREAM_MUSIC) == 7) { "unheld wheel changed media volume" }
+                } // EOF removes the temporary input device.
+            } finally { pipes[0].close() }
             check(audio.getStreamVolume(AudioManager.STREAM_ALARM) == alarmVolume)
-            result.putString("stream", "PASS: DPAD wheel media volume and limits; timed indicator; preserved TTS and playback-ending press; later playback does not change an ordinary hold; late wheel discards recording without a turn or lock, including at the cap; capped audio sends only on release; character interrupts and records; unheld wheel scrolls, held wheel does not. Audio-disabled emulator only, no Muse turn used.")
+            result.putString("stream", "PASS: DPAD wheel media volume and limits; rendered square, wave and mute boundaries; timed overlay; preserved TTS and playback-ending press; later playback does not change an ordinary hold; late wheel discards recording without a turn or lock, including at the cap; capped audio sends only on release; character interrupts and records; real kernel wheel preserves touch mode and focus during a side-button press, unheld wheel navigates. Audio-disabled emulator only, no Muse turn used.")
         } finally {
             audio.setStreamVolume(AudioManager.STREAM_MUSIC, originalVolume, 0)
             for ((key, value) in listOf("enabled_accessibility_services" to originalServices, "accessibility_enabled" to originalEnabled))

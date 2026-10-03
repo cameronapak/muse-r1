@@ -17,6 +17,7 @@ import android.view.accessibility.AccessibilityEvent
 class SideButtonService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
     private val gesture = SideButtonGesture()
+    private val volumeKeys = mutableMapOf<Int, Long>()
     private val power by lazy { getSystemService(PowerManager::class.java) }
     private val keyguard by lazy { getSystemService(KeyguardManager::class.java) }
     private var acceptAfter = 0L
@@ -49,6 +50,19 @@ class SideButtonService : AccessibilityService() {
     }
 
     override fun onKeyEvent(event: KeyEvent): Boolean {
+        if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP || event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+            // Consume before ViewRootImpl can leave touch mode or focus a background control.
+            if (event.action == KeyEvent.ACTION_DOWN && onWheel(
+                    if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP) 1 else -1)) {
+                volumeKeys[event.keyCode] = event.downTime
+                return true
+            }
+            if (volumeKeys[event.keyCode] == event.downTime) {
+                if (event.action == KeyEvent.ACTION_UP) volumeKeys.remove(event.keyCode)
+                return true
+            }
+            return false
+        }
         if (event.keyCode != KeyEvent.KEYCODE_PAIRING) return false
         if (!power.isInteractive) { cancelGesture(); return true }
         when (event.action) {
@@ -68,8 +82,9 @@ class SideButtonService : AccessibilityService() {
         return true
     }
 
-    internal fun onWheel(activity: MainActivity, direction: Int): Boolean {
-        if (!gesture.canAdjustVolume || pressedActivity !== activity || MainActivity.foreground !== activity ||
+    private fun onWheel(direction: Int): Boolean {
+        val activity = pressedActivity ?: return false
+        if (!gesture.canAdjustVolume || MainActivity.foreground !== activity ||
             !activity.hasWindowFocus() || !power.isInteractive || locked) return false
         handler.removeCallbacks(hold)
         handle(gesture.wheel())

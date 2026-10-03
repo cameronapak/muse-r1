@@ -141,28 +141,29 @@ Physical button timing, LineageOS service recovery after reboot, speaker behavio
 
 ### Volume gesture checks
 
-Use a disposable, unpaired Android 14 emulator with `-no-audio`, a 480×640 screen, and density 190. Install both APKs first. No physical device or paired emulator is allowed for this fixture.
+Use the disposable, unpaired, rooted Android 14 Google APIs emulator configured for [global side-button checks](#global-side-button-checks), with `-no-audio`, a 480×640 screen, and density 190. The fixture requires `/system/bin/uinput` and the `gpio-keys` Linux 116 to `PAIRING` mapping. Install both APKs first. No physical device or paired emulator is allowed for this fixture.
 
 ```sh
 adb -s YOUR_EMULATOR_SERIAL shell am instrument -w -e volume true \
   dev.cameronpak.muser1.test/dev.cameronpak.muser1.DeviceChecks
 ```
 
-Require `PASS` in the output. This fixture dispatches side-button events directly to the real service and wheel `DPAD_UP`/`DPAD_DOWN` events through the Activity. It does not establish the physical r1's installed wheel mapping or direction; run the global button fixture separately to check Android's accessibility input path.
-It exercises actual Android media-volume steps and limits, unchanged alarm volume, indicator expiry, matching wheel release after side-button release, continued local TTS, both playback transitions during a press, late wheel movement discarding local recording without a turn or lock, character interruption, and unheld wheel navigation.
+Require `PASS` in the output. Most cases dispatch side-button and wheel `DPAD_UP`/`DPAD_DOWN` events directly to the real service, forwarding unconsumed wheel events to the Activity.
+A separate kernel-input case uses `gpio-keys` and a temporary `uinput` wheel to exercise InputReader and Android's accessibility filter. It verifies that the first wheel event during a side-button press changes volume without leaving touch mode, changing focus, or scrolling history; unheld input still enters navigation mode. Closing the input stream removes the temporary device. The fixture does not establish physical r1 timing or wheel direction.
+It also exercises actual Android media-volume steps and limits, unchanged alarm volume, rendered square counts, wave thresholds and muted state, overlay expiry, matching wheel release after side-button release, continued local TTS, both playback transitions during a press, late wheel movement discarding local recording without a turn or lock, character interruption, and unheld wheel navigation.
 Two real 20-second captures check that the microphone closes at the cap, no turn is added before release, the wheel can discard capped audio, and release can submit it. Allow about a minute for this fixture.
 It grants emulator microphone permission and uses local `AudioRecord` and TTS, but sends no Muse turn. The capped-release check adds a failed local display-history turn and expects `SEND FAILED` without a transport. It restores media volume and accessibility enablement settings afterward. Use only disposable emulator data.
 
 Pull and inspect the volume states and cap notice:
 
 ```sh
-for state in idle speaking muted capped; do
+for state in idle speaking high muted capped; do
   adb -s YOUR_EMULATOR_SERIAL exec-out run-as dev.cameronpak.muser1 \
     cat "files/volume-$state.png" > ".amp/in/artifacts/volume-$state.png"
 done
 ```
 
-Check that the percentage pill is readable and does not obscure the character, reply, or controls. Muted playback can remain active at **Volume 0%**; an audio-disabled emulator cannot verify audible speaker output.
+Check that the large centered overlay is readable, dims the character and conversation, has no numeric percentage, and shows the correct filled squares and speaker waves. Maximum volume has three waves; muted volume has an X, no waves, and no filled squares. Playback can remain active while muted; an audio-disabled emulator cannot verify audible speaker output.
 
 ## Physical-device checks
 
@@ -207,7 +208,18 @@ Remove the fixture after testing with `adb -s YOUR_R1_SERIAL shell run-as dev.ca
 
 ## Verification status
 
-The side-button and wheel volume change was verified locally on October 3, 2026:
+The larger volume overlay and first-wheel focus fix were verified locally on October 3, 2026:
+
+- App and test APK builds and all 37 JVM tests passed.
+- The disposable, unpaired, audio-disabled Android 14 emulator passed the volume fixture, including rendered square counts and both sides of the speaker-wave thresholds, muted state, continued TTS, recording cancellation, and capped release-to-send.
+- Kernel side-button and wheel input passed the first-wheel check without changing touch mode, focus, or scroll position. Unheld wheel input still entered normal navigation mode.
+- Global side-button routing and recording-lifecycle regressions, existing visual checks, display-history checks, and force-stop restoration passed.
+- Low, medium, maximum, and muted volume screenshots were inspected at 480×640 without clipping or focus outlines.
+- Android lint still failed with 15 errors in unchanged recording, pairing, and vendored Noise code.
+
+This refinement is local only, not installed on the physical r1 or published as a release. No physical-device operations or live Muse tests were used for it.
+
+The original side-button and wheel volume shortcut was verified locally on October 3, 2026:
 
 - App and test APK builds and all 37 JVM tests passed.
 - The disposable, unpaired, audio-disabled Android 14 emulator passed the volume fixture, including playback transitions, local recording cancellation before and after the cap, capped release-to-send, and normal unheld wheel navigation.
@@ -222,7 +234,7 @@ Accessibility enablement was unchanged, and Android reported **Side button contr
 The existing side-button override remained loaded. The wheel input device used `/system/usr/keylayout/Generic.kl`, whose scan codes 103/108 were confirmed to map to `DPAD_UP`/`DPAD_DOWN`.
 This installation did not open the microphone, inject button or wheel events, run instrumentation or a live Muse test, clear app data, reboot, or change keylayouts.
 
-This volume build is installed but not confirmed hands-on or published as a release. Physical wheel events, direction and timing, and audible speaker output remain unverified. Earlier installation evidence below describes the previous global-button build.
+The owner subsequently confirmed the installed original shortcut works: "It works!" Its small percentage indicator and background-focus behavior prompted the refinement above. That confirmation does not verify the new overlay or input routing; measured physical timing, audible speaker output, and long-term reliability remain unverified here. Neither volume build is published as a release. Earlier installation evidence below describes the previous global-button build.
 
 The global side-button change was verified locally on October 3, 2026:
 

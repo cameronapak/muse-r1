@@ -20,7 +20,7 @@ The button mapping replaces native power behavior. The enabled global service su
 
 - Voice notes, not streaming dictation. Recordings last between 0.3 and 20 seconds.
 - Tap to lock Android; press to wake to PIN. Recording starts after a 300 ms side-button hold. These global controls pass emulator checks and are installed with the service enabled on one physical r1; hands-on confirmation remains pending.
-- Hold the side button and turn the wheel to adjust media volume while Muse r1 is open and unlocked. Playback continues; release neither sends a voice note nor locks. A hold beginning during playback does not record; hold the character to interrupt and talk. These volume changes pass local checks and are installed on one physical r1; hands-on confirmation remains pending.
+- Hold the side button and turn the wheel to adjust media volume while Muse r1 is open and unlocked. Playback continues; release neither sends a voice note nor locks. A hold beginning during playback does not record; hold the character to interrupt and talk. The installed shortcut has the owner's hands-on confirmation. The larger square-step overlay, changing speaker waves, muted icon, and first-wheel focus fix pass local checks but are not installed there yet.
 - A full-screen character and reply text. Hold the character to talk, or tap it to open device controls.
 - Android text-to-speech, not Muse's native voice. Missing transcripts do not block replies or playback.
 - Pairing preserved by same-signed app updates. Uninstalling or clearing app data requires pairing again.

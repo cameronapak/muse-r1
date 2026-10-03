@@ -107,11 +107,12 @@ Leaving the app cancels recording without sending it.
 You can also hold the character to talk. A tap on the character or a hold on the empty background opens device controls.
 Swipe from an edge to reveal Android's system bars temporarily.
 
-With the volume shortcut build, hold the side button and turn the wheel while Muse r1 is open and unlocked. Up raises media volume; down lowers it. A small percentage indicator disappears after 1.5 seconds without adjustment. Alarms and other sound settings are unchanged.
+With the volume shortcut build, hold the side button and turn the wheel while Muse r1 is open and unlocked. Up raises media volume; down lowers it. Alarms and other sound settings are unchanged.
+The current source build dims the background and shows a large centered speaker and square volume steps, without percentage numbers. More sound waves indicate higher volume; zero shows a muted speaker with an X. The overlay fades away after 1.5 seconds without adjustment.
 Once the wheel moves, that press controls volume through release. Any side-button recording already started is discarded; release neither sends nor locks. Without the side button, the wheel still navigates normally.
 A side-button hold beginning during playback keeps the reply playing and does not record, even if playback ends before release. Hold the character to interrupt playback and talk instead.
 At the 20-second limit, the microphone stops and Muse r1 asks you to release to send. Turning the wheel can still discard that capped side-button recording. Character recording keeps its automatic submission at the limit.
-These changes pass local checks and are installed on one physical r1 with pairing preserved; hands-on confirmation remains pending. They require a same-signed app update, not a new keylayout or reboot. See [verification status](development.md#verification-status).
+The original shortcut is installed on one physical r1 with pairing preserved, and the owner confirmed that it works. The larger overlay and first-wheel focus fix pass local checks but are not installed there yet. They require a same-signed app update, not a new keylayout or reboot. See [verification status](development.md#verification-status).
 
 Tap the side button to lock Android, including from Android settings or while Muse is replying or speaking. Locking stops playback and disconnects the foreground session; an unfinished reply might not appear after unlock.
 If the screen is locked, press the side button to wake it, release, unlock with your PIN, then hold again to speak. That wake or locked press cannot become a recording gesture.

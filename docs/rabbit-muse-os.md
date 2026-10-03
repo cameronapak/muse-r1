@@ -49,7 +49,7 @@ The owner approved this contract in the [volume design discussion](https://ampco
 
 To keep capped audio cancellable, side-button capture stops at the existing 20-second limit but waits for release to submit. The screen explains release-to-send and wheel-to-discard. This replaces the previous automatic submission at the cap for side-button input only; character recording keeps that behavior.
 
-This app implementation passes local checks but is not installed on the physical r1. The published wheel driver emits Linux `KEY_UP`/`KEY_DOWN` (scan codes 103/108), which Android's generic keylayout maps to `DPAD_UP`/`DPAD_DOWN`. The actual installed mapping, direction, and speaker output still need device confirmation.
+This app implementation passes local checks and is installed on one physical r1 with pairing preserved. The published wheel driver emits Linux `KEY_UP`/`KEY_DOWN` (scan codes 103/108). The installed wheel uses Android's generic keylayout, which was confirmed to map those codes to `DPAD_UP`/`DPAD_DOWN`. Physical wheel events, direction, and audible speaker output still need hands-on confirmation.
 The older stock-r1 gesture shown in the linked tutorial works inside volume settings. The Muse r1 shortcut deliberately works directly in the app; current Rabbit support describes voice and slider controls instead.
 
 ## First stepping stone: a global button service

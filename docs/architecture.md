@@ -45,7 +45,7 @@ The first wheel movement cancels and discards any recording started by that side
 
 `SpeechOutput.hasPlayback` includes both queued and active speech. A side-button hold beginning during playback preserves it and cannot record later on that press, even if playback ends. A tap still locks; a character hold still interrupts playback to record.
 Playback starting after button-down does not change an ordinary press into a playback-preserving press.
-The volume change passes local and emulator checks but is not installed on the physical r1. Actual wheel mapping, direction, and speaker output remain unverified there.
+The volume change passes local and emulator checks and is installed on one physical r1 with pairing preserved. Its wheel keylayout maps scan codes 103/108 to `DPAD_UP`/`DPAD_DOWN`. Physical wheel events, direction, and audible speaker output remain unverified there.
 
 ## Pairing and credentials
 

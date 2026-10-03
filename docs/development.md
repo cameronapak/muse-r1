@@ -216,7 +216,13 @@ The side-button and wheel volume change was verified locally on October 3, 2026:
 - Idle, speaking, and muted volume screenshots and the capped-recording notice were inspected at 480×640 without clipping or overlap.
 - Android lint still failed with 15 errors in unchanged recording, pairing, and vendored Noise code.
 
-This volume build is not installed on the physical r1 or published as a release. The installed wheel mapping, physical direction and timing, and audible speaker output remain unverified. Earlier installation evidence below describes the previous global-button build, not this volume update.
+With the owner's authorization on October 3, 2026, the verified volume APK was installed on the physical r1 using `adb install -r`.
+The signing key matched the previous installation, and the installed APK hash matched the verified local build. Encrypted credentials, display history, identity preferences, and the original first-install time were unchanged across installation.
+Accessibility enablement was unchanged, and Android reported **Side button controls** bound and running with key-filtering capability, no window-content capability, and no crashed services. Muse r1 returned to the foreground, and PIN protection remained active.
+The existing side-button override remained loaded. The wheel input device used `/system/usr/keylayout/Generic.kl`, whose scan codes 103/108 were confirmed to map to `DPAD_UP`/`DPAD_DOWN`.
+This installation did not open the microphone, inject button or wheel events, run instrumentation or a live Muse test, clear app data, reboot, or change keylayouts.
+
+This volume build is installed but not confirmed hands-on or published as a release. Physical wheel events, direction and timing, and audible speaker output remain unverified. Earlier installation evidence below describes the previous global-button build.
 
 The global side-button change was verified locally on October 3, 2026:
 

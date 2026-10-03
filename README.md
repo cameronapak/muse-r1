@@ -23,7 +23,8 @@ The button mapping replaces normal side-button lock and power-menu behavior; the
 - Android text-to-speech, not Muse's native voice. Missing transcripts do not block replies or playback.
 - Pairing preserved by same-signed app updates. Uninstalling or clearing app data requires pairing again.
 
-This project currently uses source-built debug APKs. Persistent display history passes local tests and is installed on the r1; physical scrolling and shake sensitivity still need hands-on confirmation.
+This project currently uses source-built debug APKs. Persistent display history passes local tests, is installed on the r1, and has the owner's hands-on confirmation that the installed flow works.
+Shake sensitivity and long-term reliability remain unverified.
 See [verification status and limitations](docs/development.md#verification-status) before relying on a feature or firmware configuration.
 
 ## For contributors

@@ -140,8 +140,9 @@ As of October 3, 2026, the installation and implementation threads reported:
 - Recording and transcription indicators passed emulator checks and were installed with pairing preserved. The publishing thread subsequently reported the owner's hands-on confirmation that the installed indicator flow works.
 - Display history passed unpaired emulator history, force-stop restoration, and existing visual checks. The history thread inspected screenshots of two turns, reading earlier turns, restoration, and confirmation without overlap or clipping. No microphone or live Muse turn was used in these checks.
 - With the owner's authorization, the history thread installed the verified APK using `adb install -r`. The installed APK hash matched the local build, encrypted credential hashes were unchanged, and the original first-install time was preserved. This installation did not record audio, send a live turn, clear app data, reboot, or change keylayouts.
+- The history thread subsequently reported the owner's hands-on confirmation that the installed display-history flow works: "Worked like a charm".
 
-Display history is verified locally and installed, but physical shake sensitivity and hands-on scrolling remain unconfirmed.
+Display history is verified locally, installed, and confirmed hands-on for the reported flow. Shake sensitivity tuning and long-term reliability remain unverified.
 These results were reported by the implementation threads, not rerun as part of documentation work.
 Hands-on transcript display, speaker loudness, long-term battery behavior, stock restoration, and other firmware builds remain unverified here.
 

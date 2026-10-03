@@ -55,7 +55,8 @@ The top-right clear icon and a shake gesture open the same confirmation. Clearin
 Canceling keeps history; confirming clears the local display and saved text. Returning to idle hides history without clearing it.
 
 As of October 3, 2026, the implementation thread reports passing local builds, JVM tests, emulator history and process-restoration checks, and screenshot inspection.
-The verified build is installed on the physical r1 with pairing preserved. Physical shake sensitivity and hands-on scrolling still need confirmation.
+The verified build is installed on the physical r1 with pairing preserved. The history thread reports the owner's hands-on confirmation that the installed display-history flow works.
+Shake sensitivity and long-term reliability remain unverified.
 
 ## Upstream code
 

@@ -41,11 +41,13 @@ At the initial threshold, a usable voice note therefore needs roughly 0.6 second
 The owner approved this contract in the [volume design discussion](https://ampcode.com/threads/T-01a10154-2397-725d-af66-9af0512e2098):
 
 - While Muse r1 is open and unlocked, hold the side button and turn the wheel without opening settings. Up raises volume; down lowers it.
-- Adjust Android media volume, including spoken replies, without changing alarms or other sound settings. Show a small transient percentage indicator.
+- The current app adjusts Android media volume, including spoken replies, without changing alarms or other sound settings. Show a large centered overlay with square volume steps, changing speaker waves, and a muted icon at zero, without percentage numbers.
 - The first wheel movement claims the press through release. Discard any side-button recording already started; release must neither submit a voice note nor lock Android.
 - A side-button hold beginning during playback preserves playback and cannot start recording later on that press. A character hold remains available to interrupt and record.
 - Without wheel movement, taps and holds below the recording cap remain unchanged except for that playback hold. Without an eligible side-button press, wheel navigation remains unchanged.
 - Keep the existing button mapping, PIN protection, and foreground-only recording boundary. No firmware or wheel remapping is required by this change.
+
+The owner chose to ship this app build and defer system-wide volume to the [RabbitMuseOS image work](https://ampcode.com/threads/T-01a1015a-44be-759b-af97-25ad5493ea6a). That OS-wide control is not implemented in this APK.
 
 To keep capped audio cancellable, side-button capture stops at the existing 20-second limit but waits for release to submit. The screen explains release-to-send and wheel-to-discard. This replaces the previous automatic submission at the cap for side-button input only; character recording keeps that behavior.
 

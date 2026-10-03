@@ -26,9 +26,12 @@ import kotlinx.coroutines.*
 class MainActivity : Activity() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val store get() = (application as MuseApp).store
+    private val volumeKeys = mutableMapOf<Int, Long>()
     private var pairing: PairingServer? = null
     private var connection: MuseConnection? = null
     private var recorder: VoiceRecorder? = null
+    private var sideButtonRecording = false
+    private var cappedVoiceNote: ByteArray? = null
     private var connected = false
     private var recording = false
     private var sending = false
@@ -278,9 +281,15 @@ class MainActivity : Activity() {
             requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 1); return
         }
         speech.stop()
-        recorder = VoiceRecorder({ runOnUiThread { finishRecording(true) } }, { runOnUiThread { finishRecording(false); updateStatus("MICROPHONE ERROR") } })
+        lateinit var capture: VoiceRecorder
+        capture = VoiceRecorder({ runOnUiThread {
+            if (recorder === capture) recordingLimitReached()
+        } }, { runOnUiThread {
+            if (recorder === capture) { finishRecording(false); updateStatus("MICROPHONE ERROR") }
+        } })
+        recorder = capture
         try {
-            recorder!!.start(); recording = true
+            capture.start(); recording = true
             transcriptFetch?.cancel()
             transcriptPending = false
             turn++
@@ -292,6 +301,8 @@ class MainActivity : Activity() {
 
     internal fun sideButtonNotice(text: String) { screen.showNotice(text) }
 
+    internal val hasPlayback get() = speech.hasPlayback
+
     internal fun beginSideButtonRecording(): Boolean {
         when {
             !hasWindowFocus() || controls?.isShowing == true || clearDialog?.isShowing == true ->
@@ -299,12 +310,21 @@ class MainActivity : Activity() {
             !historyLoaded -> sideButtonNotice("Display history is still loading. Try holding again in a moment.")
             recording -> sideButtonNotice("A recording is already in progress.")
             sending -> sideButtonNotice("Muse is still preparing your reply. Try holding again after it arrives.")
-            else -> { beginRecording(); return recording }
+            else -> { beginRecording(); sideButtonRecording = recording; return recording }
         }
         return false
     }
 
     internal fun finishSideButtonRecording(send: Boolean) { finishRecording(send) }
+
+    internal fun adjustMediaVolume(steps: Int) {
+        val audio = getSystemService(AudioManager::class.java)
+        val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        val min = audio.getStreamMinVolume(AudioManager.STREAM_MUSIC)
+        val current = audio.getStreamVolume(AudioManager.STREAM_MUSIC)
+        audio.setStreamVolume(AudioManager.STREAM_MUSIC, (current.toLong() + steps).coerceIn(min.toLong(), max.toLong()).toInt(), 0)
+        screen.showVolume(audio.getStreamVolume(AudioManager.STREAM_MUSIC), max)
+    }
 
     internal fun prepareForLock() {
         finishRecording(false)
@@ -312,10 +332,20 @@ class MainActivity : Activity() {
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
+    private fun recordingLimitReached() {
+        if (!sideButtonRecording) { finishRecording(true); return }
+        // Stop the microphone, but keep the capped audio cancellable until button release.
+        cappedVoiceNote = recorder?.finish(); recorder = null
+        updateStatus("RELEASE TO SEND")
+        screen.showNotice("20-second limit reached.\n\nRelease to send.\nTurn the wheel to discard and adjust volume.")
+    }
+
     private fun finishRecording(send: Boolean) {
         if (!recording) return
         recording = false
-        val wav = recorder?.finish(); recorder = null
+        sideButtonRecording = false
+        val wav = cappedVoiceNote ?: recorder?.finish()
+        cappedVoiceNote = null; recorder = null
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         if (!send || wav == null) {
             if (hasConversation) renderConversation() else screen.showIdle()
@@ -388,6 +418,17 @@ class MainActivity : Activity() {
             if (event.action == KeyEvent.ACTION_UP) showControls()
             return true
         }
+        if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP || event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+            if (event.action == KeyEvent.ACTION_UP && volumeKeys[event.keyCode] == event.downTime) {
+                volumeKeys.remove(event.keyCode)
+                return true
+            }
+            if (event.action == KeyEvent.ACTION_DOWN && SideButtonService.instance?.onWheel(this,
+                    if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP) 1 else -1) == true) {
+                volumeKeys[event.keyCode] = event.downTime
+                return true
+            }
+        }
         return super.dispatchKeyEvent(event)
     }
 
@@ -399,6 +440,8 @@ class MainActivity : Activity() {
     }
     override fun onPause() {
         SideButtonService.instance?.activityPaused(this)
+        screen.hideVolume()
+        volumeKeys.clear()
         if (foreground === this) foreground = null
         super.onPause()
     }

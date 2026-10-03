@@ -6,9 +6,9 @@ Use [CONTEXT.md](../CONTEXT.md) for the glossary and [Development](development.m
 
 ## Voice path
 
-1. `SideButtonService` filters side-button `KEYCODE_PAIRING` events across apps. After a 300 ms hold in unlocked, foreground Muse r1, it asks `MainActivity` to begin recording. A character hold starts recording directly.
+1. `SideButtonService` filters side-button `KEYCODE_PAIRING` events across apps. After a 300 ms hold in unlocked, foreground Muse r1, it asks `MainActivity` to begin recording unless the press began during playback or wheel movement claimed it for volume. A character hold starts recording directly and can interrupt playback.
 2. `VoiceRecorder` records 16 kHz, mono, PCM16 samples. `Wave` wraps them in a WAV file in memory.
-3. Release sends a voice note through `MuseConnection`. Recordings under 0.3 seconds are discarded; recordings stop at 20 seconds.
+3. Release sends a voice note through `MuseConnection`. Recordings under 0.3 seconds are discarded; capture stops at 20 seconds. Capped side-button audio stays in memory until release sends it or cancellation discards it. Character recording retains its automatic submission at the cap.
 4. Muse supplies reply text. `MuseScreen` renders it, and `SpeechOutput` reads the completed reply through Android text-to-speech.
 
 Leaving the foreground cancels recording, stops playback, and disconnects the session.
@@ -33,6 +33,19 @@ Native power-menu behavior remains replaced, and tap-to-lock depends on the serv
 
 These controls have local and emulator evidence and are installed with the service bound on one physical r1. Hands-on button confirmation remains pending. See [Development](development.md#verification-status).
 [RabbitMuseOS](rabbit-muse-os.md) records the firmware destination and this service's role as a stepping stone.
+
+### Side-button and wheel volume
+
+In unlocked, foreground Muse r1, hold the side button and turn the wheel. Up increases Android media volume; down decreases it. Alarms and other sound settings are unchanged.
+`MainActivity` routes wheel `DPAD_UP` and `DPAD_DOWN` key events to `SideButtonService`, which checks the press origin, foreground activity, window focus, and lock state.
+The [published r1 wheel driver](rabbit-muse-os.md#research-references) emits Linux up/down key events rather than Android scroll motion events. This change does not remap the wheel.
+
+The first wheel movement cancels and discards any recording started by that side-button press and claims it through release. Release cannot send or lock. Matching wheel key-ups are consumed even if the side button is released first; wheel events without an eligible side-button press retain normal navigation.
+`MuseScreen` shows a volume percentage for 1.5 seconds after the last adjustment and hides it on pause.
+
+`SpeechOutput.hasPlayback` includes both queued and active speech. A side-button hold beginning during playback preserves it and cannot record later on that press, even if playback ends. A tap still locks; a character hold still interrupts playback to record.
+Playback starting after button-down does not change an ordinary press into a playback-preserving press.
+The volume change passes local and emulator checks but is not installed on the physical r1. Actual wheel mapping, direction, and speaker output remain unverified there.
 
 ## Pairing and credentials
 

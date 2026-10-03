@@ -139,6 +139,31 @@ Pull and inspect `files/side-button-controls.png` and `files/side-button-disable
 After a button-service change, rerun the existing visual, display-history, and process-restoration checks too.
 Physical button timing, LineageOS service recovery after reboot, speaker behavior on locking, and long-term reliability require separately authorized device checks.
 
+### Volume gesture checks
+
+Use a disposable, unpaired Android 14 emulator with `-no-audio`, a 480×640 screen, and density 190. Install both APKs first. No physical device or paired emulator is allowed for this fixture.
+
+```sh
+adb -s YOUR_EMULATOR_SERIAL shell am instrument -w -e volume true \
+  dev.cameronpak.muser1.test/dev.cameronpak.muser1.DeviceChecks
+```
+
+Require `PASS` in the output. This fixture dispatches side-button events directly to the real service and wheel `DPAD_UP`/`DPAD_DOWN` events through the Activity. It does not establish the physical r1's installed wheel mapping or direction; run the global button fixture separately to check Android's accessibility input path.
+It exercises actual Android media-volume steps and limits, unchanged alarm volume, indicator expiry, matching wheel release after side-button release, continued local TTS, both playback transitions during a press, late wheel movement discarding local recording without a turn or lock, character interruption, and unheld wheel navigation.
+Two real 20-second captures check that the microphone closes at the cap, no turn is added before release, the wheel can discard capped audio, and release can submit it. Allow about a minute for this fixture.
+It grants emulator microphone permission and uses local `AudioRecord` and TTS, but sends no Muse turn. The capped-release check adds a failed local display-history turn and expects `SEND FAILED` without a transport. It restores media volume and accessibility enablement settings afterward. Use only disposable emulator data.
+
+Pull and inspect the volume states and cap notice:
+
+```sh
+for state in idle speaking muted capped; do
+  adb -s YOUR_EMULATOR_SERIAL exec-out run-as dev.cameronpak.muser1 \
+    cat "files/volume-$state.png" > ".amp/in/artifacts/volume-$state.png"
+done
+```
+
+Check that the percentage pill is readable and does not obscure the character, reply, or controls. Muted playback can remain active at **Volume 0%**; an audio-disabled emulator cannot verify audible speaker output.
+
 ## Physical-device checks
 
 After authorization, install the app and test APK with `adb install -r` and select the intended device explicitly.
@@ -181,6 +206,17 @@ Verify the transcript, reply content, and playback completion. An HTTP success o
 Remove the fixture after testing with `adb -s YOUR_R1_SERIAL shell run-as dev.cameronpak.muser1 rm cache/test-voice.wav`.
 
 ## Verification status
+
+The side-button and wheel volume change was verified locally on October 3, 2026:
+
+- App and test APK builds and all 37 JVM tests passed.
+- The disposable, unpaired, audio-disabled Android 14 emulator passed the volume fixture, including playback transitions, local recording cancellation before and after the cap, capped release-to-send, and normal unheld wheel navigation.
+- Global side-button routing and recording-lifecycle regressions, existing visual checks, display-history checks, and force-stop restoration passed.
+- One regression rerun failed at emulator PIN unlock and left the later UI fixtures without Home focus. After dismissing the nonsecure emulator lock screen, all affected fixtures passed on rerun.
+- Idle, speaking, and muted volume screenshots and the capped-recording notice were inspected at 480×640 without clipping or overlap.
+- Android lint still failed with 15 errors in unchanged recording, pairing, and vendored Noise code.
+
+This volume build is not installed on the physical r1 or published as a release. The installed wheel mapping, physical direction and timing, and audible speaker output remain unverified. Earlier installation evidence below describes the previous global-button build, not this volume update.
 
 The global side-button change was verified locally on October 3, 2026:
 

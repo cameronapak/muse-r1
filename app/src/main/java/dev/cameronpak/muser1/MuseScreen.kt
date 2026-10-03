@@ -97,6 +97,16 @@ internal class MuseScreen(
         visibility = View.GONE
         setOnClickListener { jumpToLatest() }
     }
+    private val volume = text("", 13f, orange).apply {
+        gravity = Gravity.CENTER
+        background = android.graphics.drawable.GradientDrawable().apply {
+            setColor(Color.rgb(32, 29, 25))
+            cornerRadius = dp(18).toFloat()
+        }
+        accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+        visibility = View.GONE
+    }
+    private val dismissVolume = Runnable { volume.visibility = View.GONE }
 
     init {
         setBackgroundColor(background)
@@ -123,7 +133,20 @@ internal class MuseScreen(
         addView(hint)
         addView(clearHistory)
         addView(latest)
+        addView(volume)
         showIdle()
+    }
+
+    fun showVolume(current: Int, max: Int) {
+        volume.text = "Volume ${if (max > 0) current * 100 / max else 0}%"
+        volume.visibility = View.VISIBLE
+        removeCallbacks(dismissVolume)
+        postDelayed(dismissVolume, 1500)
+    }
+
+    fun hideVolume() {
+        removeCallbacks(dismissVolume)
+        volume.visibility = View.GONE
     }
 
     fun showIdle() {
@@ -282,6 +305,7 @@ internal class MuseScreen(
         hint.measure(exact(w - dp(20)), exact(dp(36)))
         clearHistory.measure(exact(dp(48)), exact(dp(48)))
         latest.measure(exact(dp(48)), exact(dp(48)))
+        volume.measure(exact(dp(120)), exact(dp(36)))
     }
 
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
@@ -302,6 +326,7 @@ internal class MuseScreen(
         hint.layout(dp(10), height - dp(53), width - dp(10), height - dp(17))
         clearHistory.layout(width - dp(62), dp(14), width - dp(14), dp(62))
         latest.layout((width - dp(48)) / 2, height - dp(68), (width + dp(48)) / 2, height - dp(20))
+        volume.layout(dp(14), dp(14), dp(134), dp(50))
         updateLatestButton()
     }
 
@@ -336,6 +361,7 @@ internal class MuseScreen(
 
     override fun onDetachedFromWindow() {
         transition?.cancel()
+        hideVolume()
         super.onDetachedFromWindow()
     }
 

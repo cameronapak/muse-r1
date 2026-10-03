@@ -20,6 +20,7 @@ internal class SpeechOutput(context: Context, private val onState: (String) -> U
     private var ready = false
     private var failure: String? = null
     private var closed = false
+    val hasPlayback get() = active.isNotEmpty() || pending.isNotEmpty()
     private val attributes = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()
     private val focus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)

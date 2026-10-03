@@ -9,12 +9,15 @@ internal class SideButtonGesture {
     private var holdAllowed = false
     private var holdHandled = false
     private var holdDelivered = false
+    private var playbackPress = false
+    val canAdjustVolume get() = downTime != null && holdAllowed
 
-    fun down(time: Long, canHold: Boolean): Action {
+    fun down(time: Long, canHold: Boolean, preservePlayback: Boolean = false): Action {
         if (downTime == time) return Action.NONE
         val previous = cancel()
         downTime = time
         holdAllowed = canHold
+        playbackPress = preservePlayback
         return previous
     }
 
@@ -22,8 +25,16 @@ internal class SideButtonGesture {
         val start = downTime ?: return Action.NONE
         if (holdHandled || now - start < HOLD_MS) return Action.NONE
         holdHandled = true
-        holdDelivered = holdAllowed && canHold
+        holdDelivered = holdAllowed && canHold && !playbackPress
         return if (holdDelivered) Action.HOLD else Action.NONE
+    }
+
+    fun wheel(): Action {
+        if (downTime == null || !holdAllowed) return Action.NONE
+        val action = if (holdDelivered) Action.CANCEL else Action.NONE
+        holdHandled = true
+        holdDelivered = false
+        return action
     }
 
     fun up(start: Long, now: Long, canceled: Boolean): Action {
@@ -44,6 +55,7 @@ internal class SideButtonGesture {
         holdAllowed = false
         holdHandled = false
         holdDelivered = false
+        playbackPress = false
         return action
     }
 

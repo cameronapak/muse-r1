@@ -53,8 +53,9 @@ class SideButtonService : AccessibilityService() {
         if (!power.isInteractive) { cancelGesture(); return true }
         when (event.action) {
             KeyEvent.ACTION_DOWN -> if (event.repeatCount == 0 && event.downTime > acceptAfter) {
-                handle(gesture.down(event.downTime, !locked))
-                pressedActivity = MainActivity.foreground
+                val activity = MainActivity.foreground
+                handle(gesture.down(event.downTime, !locked, activity?.hasPlayback == true))
+                pressedActivity = activity
                 handler.removeCallbacks(hold)
                 handler.postAtTime(hold, event.downTime + SideButtonGesture.HOLD_MS)
             }
@@ -64,6 +65,15 @@ class SideButtonService : AccessibilityService() {
                 pressedActivity = null
             }
         }
+        return true
+    }
+
+    internal fun onWheel(activity: MainActivity, direction: Int): Boolean {
+        if (!gesture.canAdjustVolume || pressedActivity !== activity || MainActivity.foreground !== activity ||
+            !activity.hasWindowFocus() || !power.isInteractive || locked) return false
+        handler.removeCallbacks(hold)
+        handle(gesture.wheel())
+        activity.adjustMediaVolume(direction)
         return true
     }
 

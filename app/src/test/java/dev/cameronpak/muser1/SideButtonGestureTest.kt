@@ -5,6 +5,40 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SideButtonGestureTest {
+    @Test fun wheelBeforeHoldClaimsThePressWithoutRecordingOrLocking() {
+        val gesture = SideButtonGesture()
+        gesture.down(1000, true)
+        assertEquals(NONE, gesture.wheel())
+        assertEquals(NONE, gesture.hold(1100, true))
+        assertEquals(NONE, gesture.up(1000, 1150, false))
+        gesture.down(2000, true)
+        assertEquals(HOLD, gesture.hold(2300, true))
+        assertEquals(FINISH, gesture.up(2000, 2600, false))
+    }
+
+    @Test fun playbackAtPressKeepsTheMicrophoneClosedEvenAfterPlaybackEnds() {
+        val gesture = SideButtonGesture()
+        gesture.down(1000, true, preservePlayback = true)
+        assertEquals(NONE, gesture.hold(1300, true))
+        assertEquals(NONE, gesture.hold(1800, true))
+        assertEquals(NONE, gesture.up(1000, 1900, false))
+        gesture.down(2000, true, preservePlayback = true)
+        assertEquals(LOCK, gesture.up(2000, 2120, false)) // A tap still locks during playback.
+    }
+
+    @Test fun wheelDiscardsAnActiveHoldAndKeepsOwnershipUntilRelease() {
+        val gesture = SideButtonGesture()
+        gesture.down(1000, true)
+        assertEquals(HOLD, gesture.hold(1300, true))
+        assertEquals(CANCEL, gesture.wheel())
+        assertEquals(NONE, gesture.wheel())
+        assertEquals(NONE, gesture.down(1000, true))
+        assertEquals(NONE, gesture.hold(1700, true))
+        assertEquals(NONE, gesture.up(999, 1750, false))
+        assertEquals(NONE, gesture.up(1000, 1900, false))
+        assertEquals(NONE, gesture.wheel())
+    }
+
     @Test fun tapLocksButBothSidesOfHoldBoundaryNeverLock() {
         val gesture = SideButtonGesture()
         gesture.down(1000, true)

@@ -23,7 +23,7 @@ There is no RabbitMuseOS firmware image in this repository.
 
 - A side-button tap locks Android and turns off the display, including while you are outside Muse r1.
 - A press from screen-off wakes to the PIN screen. It does not bypass PIN authentication.
-- A hold after unlock records a voice note while Muse r1 is in the foreground. Release sends it.
+- A hold after unlock records a voice note while Muse r1 is in the foreground, unless it begins during playback or wheel movement claims it for volume. Release sends the recording.
 - A hold outside Muse r1, such as in Android settings, returns to Muse without recording on that press. The next hold can record.
 - A press that begins asleep or PIN-locked cannot become a recording gesture, even if you unlock before releasing it. Release, unlock, then press again to record.
 - A tap can lock while Muse is preparing a reply or speaking. Locking stops playback. The current foreground-only session disconnects when the app stops, so an unfinished reply might not appear after unlock.
@@ -35,6 +35,22 @@ A quick tap must not open the microphone.
 Android's default power long-press timeout is 500 ms; 300 ms favors faster voice-note input.
 The threshold is not the minimum recording duration: recording starts after the threshold, and the existing recorder discards audio shorter than 0.3 seconds.
 At the initial threshold, a usable voice note therefore needs roughly 0.6 seconds of total button hold, plus any startup delay.
+
+### Agreed volume gesture
+
+The owner approved this contract in the [volume design discussion](https://ampcode.com/threads/T-01a10154-2397-725d-af66-9af0512e2098):
+
+- While Muse r1 is open and unlocked, hold the side button and turn the wheel without opening settings. Up raises volume; down lowers it.
+- Adjust Android media volume, including spoken replies, without changing alarms or other sound settings. Show a small transient percentage indicator.
+- The first wheel movement claims the press through release. Discard any side-button recording already started; release must neither submit a voice note nor lock Android.
+- A side-button hold beginning during playback preserves playback and cannot start recording later on that press. A character hold remains available to interrupt and record.
+- Without wheel movement, taps and holds below the recording cap remain unchanged except for that playback hold. Without an eligible side-button press, wheel navigation remains unchanged.
+- Keep the existing button mapping, PIN protection, and foreground-only recording boundary. No firmware or wheel remapping is required by this change.
+
+To keep capped audio cancellable, side-button capture stops at the existing 20-second limit but waits for release to submit. The screen explains release-to-send and wheel-to-discard. This replaces the previous automatic submission at the cap for side-button input only; character recording keeps that behavior.
+
+This app implementation passes local checks but is not installed on the physical r1. The published wheel driver emits Linux `KEY_UP`/`KEY_DOWN` (scan codes 103/108), which Android's generic keylayout maps to `DPAD_UP`/`DPAD_DOWN`. The actual installed mapping, direction, and speaker output still need device confirmation.
+The older stock-r1 gesture shown in the linked tutorial works inside volume settings. The Muse r1 shortcut deliberately works directly in the app; current Rabbit support describes voice and slider controls instead.
 
 ## First stepping stone: a global button service
 
@@ -76,13 +92,19 @@ For the service stepping stone:
 - On a disposable, unpaired emulator, exercise tap-to-lock in Muse and Android settings, wake to PIN, and the no-recording boundary across unlock.
 - Check that a settings hold returns to Muse without recording, foreground loss cancels recording, locking stops playback, and unrelated keys remain unaffected.
 - Exercise service enablement, disablement, restart, and recovery. Report any gap rather than treating foreground-only success as global success.
+- Check early and late wheel ownership, media-volume limits, indicator expiry, release without sending or locking, playback preservation across its end, character interruption, and normal unheld wheel navigation. Use the [volume fixture](development.md#volume-gesture-checks) on a disposable emulator.
 - After authorization, verify the physical side button, tap and hold feel, boot and wake behavior, and preservation of pairing and PIN protection.
+- After authorization, confirm the physical wheel's mapping and direction, volume steps, and audible speaker output during playback. Emulator input and TTS checks do not establish those hardware results.
 
 For firmware, additionally verify reproducible builds, installation and recovery on the supported hardware, update behavior, and preservation or explicit migration of pairing and display history.
 Keep local checks, device installation, hands-on confirmation, and release status separate in [Development](development.md#verification-status).
 
 ## Research references
 
+- [Rabbit's current volume instructions](https://www.rabbit.tech/support/article/rabbit-r1-adjust-volume): voice and slider controls.
+- [June 2024 stock-r1 volume tutorial](https://www.youtube.com/watch?v=LUzndbxh8No&t=49): side button plus wheel within volume settings.
+- [Published r1 wheel driver](https://github.com/rabbit-hmi-oss/android_kernel_rabbit_mt6765/blob/main/drivers/input/touchscreen/och1970.c#L360-L414): each step emits up/down key press and release events. Its [input registration](https://github.com/rabbit-hmi-oss/android_kernel_rabbit_mt6765/blob/main/drivers/input/touchscreen/och1970.c#L484-L503) declares `EV_KEY` on `och1970_holl_key`.
+- [r1 Escape generic keylayout](https://github.com/RabbitHoleEscapeR1/frameworks_base/blob/main/data/keyboards/Generic.kl#L121-L131): scan codes 103/108 map to Android `DPAD_UP`/`DPAD_DOWN`.
 - [Android accessibility key-event filtering and global lock-screen action](https://developer.android.com/reference/android/accessibilityservice/AccessibilityService).
 - [Android keyguard dismissal](https://developer.android.com/reference/android/app/KeyguardManager#requestDismissKeyguard(android.app.Activity,%20android.app.KeyguardManager.KeyguardDismissCallback)): a secure PIN is not bypassed by requesting dismissal.
 - [LineageOS 21 power-button policy](https://github.com/LineageOS/android_frameworks_base/blob/lineage-21.0/services/core/java/com/android/server/policy/PhoneWindowManager.java): native power gestures and the fixed set of long-press actions.

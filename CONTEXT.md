@@ -28,8 +28,11 @@ A brief press and release of the r1's right-side button, distinct from a hold to
 _Avoid_: Click, when referring to this gesture
 
 **Side-button hold**:
-A sustained press of the r1's right-side button for voice-note input after PIN unlock.
+A sustained press of the r1's right-side button after PIN unlock. Without wheel movement, it records a voice note unless the press begins during playback.
 _Avoid_: Long click
+
+**Volume gesture**:
+A side-button hold with wheel movement in unlocked, foreground Muse r1. It adjusts Android media volume and owns that press through release, without sending a voice note or locking the screen.
 
 **Transcript**:
 Muse's text representation of what you said in a voice note.

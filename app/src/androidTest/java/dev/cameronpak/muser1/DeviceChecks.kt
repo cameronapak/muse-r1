@@ -9,6 +9,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
+import android.media.AudioManager
 import android.media.MediaPlayer
 import android.os.Build
 import android.os.Bundle
@@ -38,6 +39,7 @@ class DeviceChecks : Instrumentation() {
     private var visual = false
     private var buttonCheck = false
     private var buttonRecording = false
+    private var volumeCheck = false
     private var historyCheck = false
     private var restoreHistory = false
     private var expectedReply = "Muse on Rabbit is working"
@@ -49,6 +51,7 @@ class DeviceChecks : Instrumentation() {
         visual = arguments?.getString("visual") == "true"
         buttonCheck = arguments?.getString("button") == "true"
         buttonRecording = arguments?.getString("buttonRecording") == "true"
+        volumeCheck = arguments?.getString("volume") == "true"
         historyCheck = arguments?.getString("history") == "true"
         restoreHistory = arguments?.getString("restore") == "true"
         expectedReply = arguments?.getString("expected") ?: expectedReply
@@ -58,6 +61,7 @@ class DeviceChecks : Instrumentation() {
     override fun onStart() {
         val result = Bundle()
         try {
+            if (volumeCheck) { volumeGestureCheck(result); finish(Activity.RESULT_OK, result); return }
             if (buttonCheck) { sideButtonCheck(result); finish(Activity.RESULT_OK, result); return }
             if (historyCheck) { displayHistoryCheck(result); finish(Activity.RESULT_OK, result); return }
             if (visual) { visualCheck(result); finish(Activity.RESULT_OK, result); return }
@@ -102,7 +106,7 @@ class DeviceChecks : Instrumentation() {
             result.putString("stream", "PASS: side-button service hold starts recording; nonzero 16kHz PCM captured; WAV lengths match; audio playback completed. No audio sent to Muse.")
             finish(Activity.RESULT_OK, result)
         } catch (error: Exception) {
-            val detail = if (visual || historyCheck || buttonCheck) "\n${error.stackTraceToString()}" else ""
+            val detail = if (visual || historyCheck || buttonCheck || volumeCheck) "\n${error.stackTraceToString()}" else ""
             result.putString("stream", result.getString("stream", "") + "FAIL: " + error.javaClass.simpleName + detail)
             finish(Activity.RESULT_CANCELED, result)
         }
@@ -228,6 +232,234 @@ class DeviceChecks : Instrumentation() {
         SideButtonService::class.java.getDeclaredMethod("onKeyEvent", KeyEvent::class.java)
             .apply { isAccessible = true }
             .invoke(service, KeyEvent(start, SystemClock.uptimeMillis(), action, KeyEvent.KEYCODE_PAIRING, 0))
+    }
+
+    /** Unpaired, audio-disabled emulator only. No live transport or household microphone input. */
+    private fun volumeGestureCheck(result: Bundle) {
+        check(Build.HARDWARE in setOf("ranchu", "goldfish"))
+        val store = (targetContext.applicationContext as MuseApp).store
+        check(store.credentials() == null && store.sdkToken() == null)
+        val automation = getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES)
+        fun shell(command: String) = automation.executeShellCommand(command).use {
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(it).use { input -> input.readBytes().toString(Charsets.UTF_8).trim() }
+        }
+        val originalServices = shell("settings get secure enabled_accessibility_services")
+        val originalEnabled = shell("settings get secure accessibility_enabled")
+        val audio = targetContext.getSystemService(AudioManager::class.java)
+        val originalVolume = audio.getStreamVolume(AudioManager.STREAM_MUSIC)
+        val alarmVolume = audio.getStreamVolume(AudioManager.STREAM_ALARM)
+        val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        check(max > 3)
+        try {
+            shell("settings delete secure enabled_accessibility_services")
+            repeat(100) { if (SideButtonService.instance != null) Thread.sleep(50) }
+            shell("settings put secure enabled_accessibility_services dev.cameronpak.muser1/.SideButtonService")
+            shell("settings put secure accessibility_enabled 1")
+            val activity = launchHome()
+            repeat(100) { if (SideButtonService.instance == null) Thread.sleep(50) }
+            check(SideButtonService.instance != null)
+            Thread.sleep(400)
+            val screen = MainActivity::class.java.getDeclaredField("screen").apply { isAccessible = true }.get(activity) as MuseScreen
+            fun wheel(up: Boolean): Boolean {
+                val key = if (up) KeyEvent.KEYCODE_DPAD_UP else KeyEvent.KEYCODE_DPAD_DOWN
+                val now = SystemClock.uptimeMillis()
+                val consumed = activity.dispatchKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, key, 0))
+                val released = activity.dispatchKeyEvent(KeyEvent(now, now + 1, KeyEvent.ACTION_UP, key, 0))
+                return consumed && released
+            }
+            fun onMain(block: () -> Unit) {
+                var failure: Throwable? = null
+                runOnMainSync { try { block() } catch (error: Throwable) { failure = error } }
+                failure?.let { throw it }
+            }
+            fun indicator(): TextView {
+                val views = arrayListOf<View>()
+                screen.findViewsWithText(views, "Volume", View.FIND_VIEWS_WITH_TEXT)
+                return views.filterIsInstance<TextView>().single { it.text.matches(Regex("Volume \\d+%")) }
+            }
+            fun capture(name: String) {
+                Thread.sleep(120)
+                automation.takeScreenshot().let { bitmap ->
+                    check(bitmap.width == 480 && bitmap.height == 640)
+                    File(targetContext.filesDir, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                    bitmap.recycle()
+                }
+            }
+            var press = 0L
+            onMain {
+                screen.setState("READY"); screen.showIdle()
+                audio.setStreamVolume(AudioManager.STREAM_MUSIC, 2, 0)
+                press = SystemClock.uptimeMillis()
+                sideButtonKey(KeyEvent.ACTION_DOWN, press)
+                check(wheel(true)) { "held wheel was not consumed" }
+                check(audio.getStreamVolume(AudioManager.STREAM_MUSIC) == 3) { "held wheel did not raise media volume" }
+                check(indicator().isShown) { "volume indicator is missing" }
+            }
+            capture("volume-idle")
+            onMain {
+                check(wheel(false))
+                check(audio.getStreamVolume(AudioManager.STREAM_MUSIC) == 2)
+                audio.setStreamVolume(AudioManager.STREAM_MUSIC, max, 0)
+                check(wheel(true))
+                check(audio.getStreamVolume(AudioManager.STREAM_MUSIC) == max && indicator().text == "Volume 100%")
+                audio.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0)
+                check(wheel(false))
+                check(audio.getStreamVolume(AudioManager.STREAM_MUSIC) == 0 && indicator().text == "Volume 0%")
+                audio.setStreamVolume(AudioManager.STREAM_MUSIC, 2, 0)
+                sideButtonKey(KeyEvent.ACTION_UP, press)
+            }
+            check(targetContext.getSystemService(PowerManager::class.java).isInteractive) { "volume release locked Android" }
+            check(audio.getStreamVolume(AudioManager.STREAM_ALARM) == alarmVolume)
+            onMain {
+                press = SystemClock.uptimeMillis()
+                sideButtonKey(KeyEvent.ACTION_DOWN, press)
+                val now = SystemClock.uptimeMillis()
+                check(activity.dispatchKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_UP, 0)))
+                sideButtonKey(KeyEvent.ACTION_UP, press)
+                check(activity.dispatchKeyEvent(KeyEvent(now, now + 1, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_DPAD_UP, 0)))
+                check(audio.getStreamVolume(AudioManager.STREAM_MUSIC) == 3) { "r1 DPAD wheel did not raise volume" }
+            }
+            Thread.sleep(1600)
+            onMain {
+                val visible = arrayListOf<View>()
+                screen.findViewsWithText(visible, "Volume", View.FIND_VIEWS_WITH_TEXT)
+                check(visible.filterIsInstance<TextView>().none { it.text.matches(Regex("Volume \\d+%")) }) { "volume indicator did not dismiss" }
+            }
+            val speech = MainActivity::class.java.getDeclaredField("speech").apply { isAccessible = true }.get(activity) as SpeechOutput
+            val reply = "This is a local volume test. ".repeat(30)
+            val displayedReply = "You can change the volume without interrupting this reply."
+            onMain { screen.showConversation("Check volume", displayedReply); speech.speak(reply) }
+            var speaking = false
+            repeat(100) {
+                if (!speaking) { onMain { speaking = screen.status.text == "MUSE IS SPEAKING" }; Thread.sleep(50) }
+            }
+            check(speaking) { "local TTS did not begin" }
+            onMain { press = SystemClock.uptimeMillis(); sideButtonKey(KeyEvent.ACTION_DOWN, press) }
+            Thread.sleep(450)
+            onMain {
+                check(screen.status.text == "MUSE IS SPEAKING" && screen.message.text.contains(displayedReply)) { "playback hold interrupted or replaced the reply" }
+                audio.setStreamVolume(AudioManager.STREAM_MUSIC, 5, 0)
+                check(wheel(true))
+                check(speech.hasPlayback) { "volume change stopped local TTS" }
+            }
+            capture("volume-speaking")
+            onMain {
+                audio.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0)
+                check(wheel(false))
+                check(speech.hasPlayback && indicator().text == "Volume 0%")
+            }
+            capture("volume-muted")
+            onMain {
+                speech.stop() // Playback can finish while the same physical press is still held.
+            }
+            Thread.sleep(400)
+            onMain {
+                check(screen.status.text != "LISTENING")
+                sideButtonKey(KeyEvent.ACTION_UP, press)
+            }
+            // A late wheel movement must discard the button's recording instead of sending it.
+            shell("pm grant dev.cameronpak.muser1 android.permission.RECORD_AUDIO")
+            val connected = MainActivity::class.java.getDeclaredField("connected").apply { isAccessible = true }
+            val app = targetContext.applicationContext as MuseApp
+            val before = runBlocking { app.displayHistory.load() }
+            onMain { connected.setBoolean(activity, true); press = SystemClock.uptimeMillis(); sideButtonKey(KeyEvent.ACTION_DOWN, press) }
+            Thread.sleep(950)
+            onMain {
+                check(screen.status.text == "LISTENING")
+                check(wheel(false))
+                check(screen.status.text == "READY")
+                sideButtonKey(KeyEvent.ACTION_UP, press)
+            }
+            Thread.sleep(200)
+            check(runBlocking { app.displayHistory.load() } == before) { "volume release added a voice turn" }
+            check(targetContext.getSystemService(PowerManager::class.java).isInteractive)
+            // Playback arriving after button-down must not change the original press role.
+            onMain {
+                press = SystemClock.uptimeMillis()
+                sideButtonKey(KeyEvent.ACTION_DOWN, press)
+                speech.speak(reply)
+            }
+            Thread.sleep(650)
+            onMain {
+                check(screen.status.text == "LISTENING" && !speech.hasPlayback) { "later playback changed an ordinary hold" }
+                check(wheel(false))
+                sideButtonKey(KeyEvent.ACTION_UP, press)
+            }
+            // Even at the audio cap, release owns submission and the wheel can still discard.
+            val recorderField = MainActivity::class.java.getDeclaredField("recorder").apply { isAccessible = true }
+            for (discard in listOf(true, false)) {
+                val saved = runBlocking { app.displayHistory.load() }
+                onMain { press = SystemClock.uptimeMillis(); sideButtonKey(KeyEvent.ACTION_DOWN, press) }
+                var capped = false
+                repeat(240) {
+                    if (!capped) { Thread.sleep(100); onMain { capped = screen.status.text == "RELEASE TO SEND" } }
+                }
+                check(capped) { "side-button cap submitted instead of waiting for release" }
+                onMain { check(recorderField.get(activity) == null) { "microphone stayed open at the cap" } }
+                check(runBlocking { app.displayHistory.load() } == saved) { "cap added a turn before release" }
+                if (discard) capture("volume-capped")
+                onMain {
+                    if (discard) check(wheel(true))
+                    sideButtonKey(KeyEvent.ACTION_UP, press)
+                }
+                Thread.sleep(250)
+                val after = runBlocking { app.displayHistory.load() }
+                if (discard) {
+                    check(after == saved) { "wheel failed to discard capped audio" }
+                    onMain { check(screen.status.text == "READY") }
+                } else {
+                    check(after.size == saved.size + 1) { "release lost capped audio instead of submitting" }
+                    onMain { check(screen.status.text == "SEND FAILED") } // No transport or credentials.
+                }
+                check(targetContext.getSystemService(PowerManager::class.java).isInteractive)
+            }
+            onMain {
+                speech.speak(reply)
+                press = SystemClock.uptimeMillis()
+                sideButtonKey(KeyEvent.ACTION_DOWN, press)
+                speech.stop() // End before the hold timer, without any wheel movement.
+            }
+            Thread.sleep(450)
+            onMain { check(screen.status.text != "LISTENING"); sideButtonKey(KeyEvent.ACTION_UP, press) }
+            // Touching the character still interrupts actual playback and begins voice-note input.
+            onMain { speech.speak(reply) }
+            Thread.sleep(200)
+            val avatar = MuseScreen::class.java.getDeclaredField("avatar").apply { isAccessible = true }.get(screen) as View
+            onMain {
+                check(speech.hasPlayback)
+                MotionEvent.obtain(0, 0, MotionEvent.ACTION_DOWN, 10f, 10f, 0).let { avatar.dispatchTouchEvent(it); it.recycle() }
+                check(screen.status.text == "LISTENING" && !speech.hasPlayback)
+                MotionEvent.obtain(0, 400, MotionEvent.ACTION_CANCEL, 10f, 10f, 0).let { avatar.dispatchTouchEvent(it); it.recycle() }
+                check(screen.status.text == "READY")
+                connected.setBoolean(activity, false)
+                screen.showConversation("Read earlier turns", "Earlier reply. ".repeat(100))
+            }
+            Thread.sleep(350)
+            val scroll = MuseScreen::class.java.getDeclaredField("scroll").apply { isAccessible = true }.get(screen) as ScrollView
+            val readingVolume = audio.getStreamVolume(AudioManager.STREAM_MUSIC)
+            onMain {
+                // Direct Activity dispatch does not leave touch mode as real keyboard input does.
+                scroll.isFocusableInTouchMode = true
+                check(scroll.requestFocus())
+                scroll.scrollTo(0, 0)
+                wheel(false)
+            }
+            Thread.sleep(350)
+            onMain {
+                check(scroll.scrollY > 0) { "wheel without side button no longer scrolls" }
+                check(audio.getStreamVolume(AudioManager.STREAM_MUSIC) == readingVolume)
+                val position = scroll.scrollY
+                press = SystemClock.uptimeMillis(); sideButtonKey(KeyEvent.ACTION_DOWN, press)
+                check(wheel(true) && scroll.scrollY == position) { "volume wheel also scrolled history" }
+                sideButtonKey(KeyEvent.ACTION_UP, press)
+            }
+            check(audio.getStreamVolume(AudioManager.STREAM_ALARM) == alarmVolume)
+            result.putString("stream", "PASS: DPAD wheel media volume and limits; timed indicator; preserved TTS and playback-ending press; later playback does not change an ordinary hold; late wheel discards recording without a turn or lock, including at the cap; capped audio sends only on release; character interrupts and records; unheld wheel scrolls, held wheel does not. Audio-disabled emulator only, no Muse turn used.")
+        } finally {
+            audio.setStreamVolume(AudioManager.STREAM_MUSIC, originalVolume, 0)
+            for ((key, value) in listOf("enabled_accessibility_services" to originalServices, "accessibility_enabled" to originalEnabled))
+                shell(if (value == "null" || value.isBlank()) "settings delete secure $key" else "settings put secure $key $value")
+        }
     }
 
     /** Disposable emulator only. Tests real global key filtering without opening the microphone. */

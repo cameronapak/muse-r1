@@ -145,6 +145,6 @@ Display history is verified locally and installed, but physical shake sensitivit
 These results were reported by the implementation threads, not rerun as part of documentation work.
 Hands-on transcript display, speaker loudness, long-term battery behavior, stock restoration, and other firmware builds remain unverified here.
 
-The project has no first-party license selected yet. Preserve the existing third-party notices; they do not establish a license for the whole project.
-The character illustration was generated from a supplied Muse avatar reference. Its redistribution rights are not established here.
+First-party code and documentation are licensed under [MIT](../LICENSE). Preserve the existing third-party licenses and notices.
+The character illustration was generated from a supplied Muse avatar reference. It is not covered by the MIT license, and its redistribution rights are not established here.
 Do not publish `.amp/in/`, credentials, personal conversations, or device identifiers.

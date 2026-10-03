@@ -32,3 +32,8 @@ See [verification status and limitations](docs/development.md#verification-statu
 - [How the app works](docs/architecture.md)
 - [Project glossary](CONTEXT.md)
 - [Agent guidance](AGENTS.md)
+
+## License
+
+First-party code and documentation are licensed under [MIT](LICENSE). Vendored code retains its existing licenses and notices.
+The character illustration is not covered by this license; its redistribution rights are not established here.

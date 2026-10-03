@@ -33,6 +33,7 @@ Pairing state survives a same-signed `adb install -r`, but not uninstalling or c
 The client requests text output because Muse voice-output requests returned generic server errors in earlier live tests.
 Android text-to-speech is the fallback. An offline US English voice is preferred when available; the voice is not Muse's native voice.
 See [Muse SDK issue 6](https://github.com/facebookincubator/muse-gadget-sdk/issues/6) for related reports.
+The [Android TTS decision](adr/0001-android-tts-until-muse-gadget-voice.md) records why this stays in place and when to revisit native gadget voice.
 
 ### Transcripts
 

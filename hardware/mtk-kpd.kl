@@ -1,0 +1,4 @@
+# Rabbit r1 side button. PAIRING wakes Android and reaches Muse r1 while unlocked.
+# The PMIC power input and scroll wheel are not changed.
+key 114 VOLUME_DOWN
+key 116 PAIRING
